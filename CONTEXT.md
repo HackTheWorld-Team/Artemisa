@@ -1,11 +1,12 @@
 # Artemisa Project Context
 
-Updated: 2026-07-26
+Updated: 2026-10-09
 
 ## State
 
 - Repository uses npm workspaces (`packages/*`, `frontend`, `agent-creator`): root Express/TypeScript backend, `frontend/` Next app (landing + Creator at `/agents/new`), and `agent-creator/` Vite tool. Root `package.json` owns backend scripts/tests and hoists shared dependencies; per-app installs still work via `npm --prefix <app> run <script>` but `npm --prefix <app> ci` fails (use root `npm ci` instead, which installs all workspaces).
-- The backend only generates configuration files. There is no execution, deployment or hosting path in this repo.
+- The backend only generates configuration files: no execution, external service calls or persistence at runtime (ADR-0008). That says nothing about where it is hosted, which is ADR-0009.
+- Deploy topology (ADR-0009): **backend only** on Azure Container Apps, Consumption plan, declared in `infra/main.bicep` and deployed by `.github/workflows/deploy-azure.yml` (build -> `ghcr.io` -> deploy -> health gate on `/api/health` -> auto-rollback). The frontend stays on Netlify and is not part of that path; `agent-creator/` is not deployed at all. `.do/app.yaml` (DigitalOcean) stays until the Azure path is confirmed in production.
 - Backend entrypoint: `src/server.ts` -> `src/app.ts`. Express mounts public creator catalog/workflow/tutorial/agent endpoints before auth, then `/api` metrics/health/openapi, then the protected creator routes.
 - Backend source is now: `src/creator/*` (catalog, decision tree, generator, agent protocol, sub-catalogs), `src/routes/{health,metrics,openapi,debug}.ts`, `src/middleware/*`, `src/config.ts` (server settings only), `src/errors.ts`, `src/logger.ts`, `src/health.ts`, and `src/kiro/schemas/*.json`.
 - No persistence: no database, no filesystem writes, no network calls during generation. Every request is a pure function of its body.
@@ -93,6 +94,7 @@ docs/reference/*                     (documentation only, not imported)
 - `src/middleware/auth.ts` fail-closed behavior when `AUTH_REQUIRED=true` and no keys are configured.
 - `src/kiro/schemas/*.json` plus the examples in `docs/reference/`; schema tests are intentionally strict.
 - Frontend API base URL behavior: `NEXT_PUBLIC_API_URL` is a build-time public env var.
+- `infra/main.bicep`: `workloadProfiles` must stay **omitted** from `Microsoft.App/managedEnvironments` (not `[]`, which creates a workload profiles environment billing ~USD 73/month with nothing running), no `logAnalyticsConfiguration`, and `TRUST_PROXY=1` must stay set or the per-IP rate limiter treats every user behind the proxy as one source and blocks them. Guarded by `test/deploy-security.test.mjs`.
 
 ## Non-Goals
 
