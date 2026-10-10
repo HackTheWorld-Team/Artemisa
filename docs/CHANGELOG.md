@@ -4,7 +4,17 @@ All notable changes to this project are documented here.
 
 ### Bug Fixes
 
+- Keep the only valid CPU/memory pair and scale out earlier instead _(deploy)_
+
+## [v1.5.16] - 2026-10-10
+
+### Bug Fixes
+
 - Give the backend enough CPU, since DigitalOcean is gone and this is the only API _(deploy)_
+
+### Chores
+
+- V1.5.16 [skip ci] _(release)_
 
 ## [v1.5.15] - 2026-10-10
 
