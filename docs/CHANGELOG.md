@@ -4,7 +4,17 @@ All notable changes to this project are documented here.
 
 ### Bug Fixes
 
+- Use the ACR admin credential, since express environments reject managed identity _(deploy)_
+
+## [v1.5.14] - 2026-10-10
+
+### Bug Fixes
+
 - Set up buildx so the GHA cache backend can be exported _(ci)_
+
+### Chores
+
+- V1.5.14 [skip ci] _(release)_
 
 ## [v1.5.13] - 2026-10-10
 
