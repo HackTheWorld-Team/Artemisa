@@ -15,7 +15,7 @@ Accepted
 
 ## Decision
 
-- Deploy **only the backend** to Azure Container Apps on the Consumption plan, at about USD 9.29/month with `minReplicas: 1`. The frontend stays on Netlify and is not part of this deploy path. `agent-creator/` is not deployed at all (legacy, superseded by `frontend/agents/new`).
+- Deploy **only the backend** to Azure Container Apps on the Consumption plan, at about USD 11.26/month with `minReplicas: 1` and 0.5 vCPU. The frontend stays on Netlify and is not part of this deploy path. `agent-creator/` is not deployed at all (legacy, superseded by `frontend/agents/new`).
 - `infra/main.bicep` owns the infrastructure. It creates one `Microsoft.ContainerRegistry`, one `Microsoft.App/managedEnvironments` and one `Microsoft.App/containerApps`, plus the `AcrPull` role assignment that connects them.
 - `workloadProfiles` is **omitted** from the environment, not set to `[]`. Omitting it yields a Consumption-only environment. An empty array creates a workload profiles environment, which bills a USD 0.10/h management fee (~USD 73/month) before any container runs.
 - No `logAnalyticsConfiguration` and no `appInsightsConfiguration` are attached, so console output is not billed per GB ingested.
@@ -41,6 +41,7 @@ Accepted
 - The deploy cost is about USD 9.29/month (ACR Basic USD 5.00 + Container Apps ~USD 4.29 at `minReplicas: 1`) and roughly USD 15/month worst case at `minReplicas: 2` with normal traffic. Raising `minReplicas` to 2 buys availability-zone spread for ~USD 5.92 more and breaks a USD 10/month budget, which is why it is not the default.
 - Availability depends on probes and `minReplicas >= 1`, not on the process being supervised. A wedged Node process is restarted by the platform rather than noticed by a human.
 - Container Apps guarantees 99.95% monthly uptime with service credits, which is about 22 minutes of allowed downtime per month. There is no failover region, so a full region outage takes the API down.
+- **The deployment has a single replica and no availability-zone spread**, because `minReplicas: 2` costs about USD 15.21/month including the registry and the ceiling is USD 15. Losing the one replica means the API is down until Container Apps replaces it. This stopped being theoretical when the DigitalOcean account was cancelled: there is no second backend, so the ADR's earlier "keeps a fallback during the transition" note no longer applies.
 - The deploy path is now split across two providers: backend on Azure, frontend on Netlify. A CORS or URL mismatch between them fails as `403 API_CORS_FORBIDDEN` with no other symptom, so `CORS_ALLOWED_ORIGINS` must track the Netlify origin exactly.
 - `NEXT_PUBLIC_API_URL` is baked at build time, so repointing the frontend requires a Netlify rebuild, not just a variable change.
 - Without `TRUST_PROXY=1` every request appears to originate from Container Apps' proxy, the per-IP rate limiter treats all users as one source, and real users are blocked after `RATE_LIMIT_GLOBAL` requests per minute. This is the most likely self-inflicted outage in this design and is why the value is pinned in the Bicep.
