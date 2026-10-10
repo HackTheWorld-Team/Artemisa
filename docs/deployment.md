@@ -177,11 +177,19 @@ Deploy runs from `.github/workflows/deploy-azure.yml`:
   no registry credential is stored in GitHub or in the Container App.
 
 Measured against the Azure Retail Prices API, the running cost is about
-**USD 9.29/month**: ACR Basic is USD 0.1666/day (USD 5.00/month) plus
-USD 0.10/GB stored, and Container Apps with `minReplicas: 1` at 0.25 vCPU /
-0.5 GiB comes to about USD 4.29/month after the free grant. Raising to
-`minReplicas: 2` adds availability-zone spread for roughly USD 5.92 more,
-which would exceed a USD 10/month budget on its own.
+**USD 11.26/month**: ACR Basic is USD 0.1666/day (USD 5.00/month) plus
+USD 0.10/GB stored, and Container Apps with `minReplicas: 1` at 0.5 vCPU /
+0.5 GiB comes to about USD 6.26/month after the free grant.
+
+Sizing is set by measurement, not by guesswork. At 0.25 vCPU the API answered a
+plain `/api/health` in 700-900ms and stopped responding to a handful of
+concurrent requests, while memory sat at ~68MB of 710MB — the container was
+CPU-starved, not memory-starved. 0.5 vCPU fixes that. `concurrentRequests: 3`
+scales out earlier so a burst does not pile onto one already-busy replica.
+
+`minReplicas: 2` is **not affordable** here: even at 0.25 vCPU it costs about
+USD 15.21/month including the registry, which is over the ceiling. This
+deployment therefore has a single replica and no availability-zone spread.
 
 Three settings hold that number, and none should be "fixed" without reading
 `infra/README.md` first:

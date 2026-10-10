@@ -45,8 +45,8 @@ param minReplicas int = 1
 @maxValue(25)
 param maxReplicas int = 5
 
-@description('vCPU per replica. 0.25 is enough for a stateless CPU-burst API.')
-param cpu string = '0.25'
+@description('vCPU per replica. Measured: at 0.25 the API answered a plain /api/health in 700-900ms and saturated under a handful of concurrent requests, so 0.25 is starved for this stack (Express + helmet + compression + rate limiting) even though memory stays at ~68MB. 0.5 keeps latency sane and still fits the budget.')
+param cpu string = '0.5'
 
 @description('Memory per replica.')
 param memory string = '0.5Gi'
@@ -151,7 +151,11 @@ resource backend 'Microsoft.App/containerApps@2024-03-01' = {
             name: 'http'
             http: {
               metadata: {
-                concurrentRequests: '10'
+                // Scale out earlier. At 10 a single replica absorbs the whole
+                // burst before KEDA adds a second one, and the backlog
+                // compounds on an already-starved container. 3 trades a little
+                // extra scaling activity for not falling over.
+                concurrentRequests: '3'
               }
             }
           }
