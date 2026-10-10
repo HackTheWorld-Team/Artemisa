@@ -1,0 +1,161 @@
+name: Deploy backend to Azure Container Apps
+
+# Deploy model: development -> master is a release, so a push to master that
+# touches the backend deploys it. Everything else is manual.
+#
+# Frontend is NOT deployed here — it lives on Netlify and only needs its
+# NEXT_PUBLIC_API_URL rebuilt against the new backend URL when that changes.
+#
+# Required GitHub configuration (see infra/README.md for the setup commands):
+#   Variables: AZURE_RESOURCE_GROUP, AZURE_CONTAINER_REGISTRY, IMAGE_REPOSITORY,
+#              PUBLIC_BASE_URL, CORS_ALLOWED_ORIGINS
+#   Secrets:   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
+#              ARTEMISA_API_KEYS, METRICS_SECRET, BYPASS_SECRET
+# No registry secret: the image goes to Azure Container Registry and the
+# container app pulls it with a system-assigned managed identity (AcrPull).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'src/**'
+      - 'docker/Dockerfile.backend'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'infra/**'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+  APP: artemisa-backend
+  DEPLOYMENT: artemisa-backend
+  IMAGE_REPO: ${{ vars.IMAGE_REPOSITORY }}
+  ACR_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY }}
+  ACR_LOGIN_SERVER: ${{ vars.AZURE_CONTAINER_REGISTRY }}.azurecr.io
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Serial by design: two concurrent deploys to the same Container App race
+    # on the image tag and can leave an unknown revision active.
+    concurrency:
+      group: artemisa-azure-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # az acr login configures docker's credentials for ACR using the OIDC
+      # session. No PAT: the container app pulls with its own managed identity.
+      - name: Log in to Azure Container Registry
+        run: az acr login --name "$ACR_NAME" --only-show-errors
+
+      - name: Compute image tag
+        id: meta
+        run: |
+          set -euo pipefail
+          # Immutable tag: never reuse a tag for different content, so a
+          # rollback target always still points at the image it named.
+          echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "image=${ACR_LOGIN_SERVER}/${IMAGE_REPO}:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.backend
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Capture current image (rollback target)
+        id: prev
+        run: |
+          set -euo pipefail
+          img=$(az containerapp show -g "$RG" -n "$APP" \
+            --query properties.template.containers[0].image -o tsv 2>/dev/null || echo "")
+          echo "image=$img" >> "$GITHUB_OUTPUT"
+          echo "Rollback target: ${img:-<none — first deploy>}"
+
+      - name: Deploy infrastructure
+        run: |
+          set -euo pipefail
+          # Secrets go through a 600-mode file rather than CLI arguments so
+          # they never land in a process list or a debug log.
+          params=$(mktemp)
+          chmod 600 "$params"
+          trap 'rm -f "$params"' EXIT
+          cat > "$params" <<JSON
+          {
+            "\$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+            "contentVersion": "1.0.0.0",
+            "parameters": {
+              "imageRepository":    { "value": "${IMAGE_REPO}" },
+              "imageTag":           { "value": "${{ steps.meta.outputs.tag }}" },
+              "publicBaseUrl":      { "value": "${{ vars.PUBLIC_BASE_URL }}" },
+              "corsAllowedOrigins": { "value": "${{ vars.CORS_ALLOWED_ORIGINS }}" },
+              "artemisaApiKeys":    { "value": "${{ secrets.ARTEMISA_API_KEYS }}" },
+              "metricsSecret":      { "value": "${{ secrets.METRICS_SECRET }}" },
+              "bypassSecret":       { "value": "${{ secrets.BYPASS_SECRET }}" },
+              "containerRegistryName": { "value": "${ACR_NAME}" }
+            }
+          }
+          JSON
+
+          az deployment group create \
+            --resource-group "$RG" \
+            --name "$DEPLOYMENT" \
+            --template-file infra/main.bicep \
+            --parameters "@$params" \
+            --only-show-errors
+
+          fqdn=$(az deployment group show -g "$RG" -n "$DEPLOYMENT" \
+            --query properties.outputs.fqdn.value -o tsv)
+          echo "FQDN=$fqdn" >> "$GITHUB_ENV"
+          echo "Deployed: https://$fqdn"
+
+      - name: Health gate (fail the deploy if the API does not answer)
+        run: |
+          set -euo pipefail
+          # Container Apps only routes to a revision that passes its readiness
+          # probe, so a bad image stays dark instead of taking users down.
+          # This gate just refuses to call the deploy "done" until /api/health
+          # is actually answering 200 from the public endpoint.
+          for attempt in $(seq 1 30); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' \
+              --max-time 10 "https://$FQDN/api/health" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "Healthy after ${attempt} attempt(s)."
+              curl -sS --max-time 10 "https://$FQDN/api/health"
+              exit 0
+            fi
+            echo "Attempt $attempt/30 -> HTTP $code"
+            sleep 10
+          done
+          echo "::error::Health gate failed for https://$FQDN/api/health"
+          exit 1
+
+      - name: Roll back to the previous image
+        if: failure() && steps.prev.outputs.image != ''
+        run: |
+          set -euo pipefail
+          echo "::warning::Reverting to ${{ steps.prev.outputs.image }}"
+          az containerapp update \
+            --resource-group "$RG" \
+            --name "$APP" \
+            --image "${{ steps.prev.outputs.image }}" \
+            --only-show-errors
+          echo "Rolled back. Check the failed deploy's image and logs."
