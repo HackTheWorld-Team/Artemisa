@@ -4,7 +4,17 @@ All notable changes to this project are documented here.
 
 ### Bug Fixes
 
+- Set up buildx so the GHA cache backend can be exported _(ci)_
+
+## [v1.5.13] - 2026-10-10
+
+### Bug Fixes
+
 - Grant id-token write so azure/login can mint its federated token _(ci)_
+
+### Chores
+
+- V1.5.13 [skip ci] _(release)_
 
 ## [v1.5.12] - 2026-10-10
 
