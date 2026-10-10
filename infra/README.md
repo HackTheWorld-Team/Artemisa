@@ -5,31 +5,65 @@ backend de Express en Azure Container Apps, plan Consumption.
 
 ## Qué se despliega
 
-| Recurso                             | Por qué                                                     |
-| ----------------------------------- | ----------------------------------------------------------- |
-| `Microsoft.App/managedEnvironments` | Environment **Consumption-only**, sin Log Analytics adjunto |
-| `Microsoft.App/containerApps`       | `artemisa-backend`, 0.25 vCPU / 0.5 GiB, `minReplicas: 2`   |
+| Recurso                                   | Por qué                                                                                   |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `Microsoft.ContainerRegistry/registries`  | ACR **Basic** (USD 0.1666/día ≈ USD 5.00/mes). Credenciales de admin deshabilitadas       |
+| `Microsoft.App/managedEnvironments`       | Environment **Consumption-only**, sin Log Analytics adjunto                               |
+| `Microsoft.App/containerApps`             | `artemisa-backend`, 0.25 vCPU / 0.5 GiB, `minReplicas: 1`, identidad asignada del sistema |
+| `Microsoft.Authorization/roleAssignments` | `AcrPull` para que el Container App tome la imagen sin ningún secret                      |
 
-Nada más. Sin ACR (usa `ghcr.io`), sin Key Vault (los secretos van en el secret
-store del Container App), sin App Insights, sin AKS.
+Sin Key Vault (los secretos van en el secret store del Container App), sin App
+Insights, sin AKS.
+
+El Container App toma la imagen con una **identidad gestionada** (`identity:
+'system'` + rol `AcrPull`). No hay token de registry que crear, guardar ni
+rotar. Se eligió ACR (~USD 5/mes) en vez de `ghcr.io` (gratis) precisamente
+por eso: con ghcr.io haría falta un PAT que caduca, y un token vencido corta
+el escalamiento y los deploys sin avisar.
 
 ## Costo esperado
 
-Con `minReplicas: 2` y 0.25 vCPU / 0.5 GiB, **~USD 10–12/mes** en uso normal y
-~USD 37 en el peor caso (100% activo). El free grant de Container Apps
-(180.000 vCPU-s + 360.000 GiB-s + 2M requests por mes) está descontado.
+Medido contra la Azure Retail Prices API (brazilsouth y eastus2 cobran lo
+mismo):
 
-Dos decisiones que sostienen ese número, y que **no conviene tocar**:
+| Configuración                             | USD/mes  |
+| ----------------------------------------- | -------- |
+| **`minReplicas: 1` + ACR Basic (actual)** | **9.29** |
+| `minReplicas: 2` + ACR Basic              | ~15.21   |
+| `minReplicas: 1` sin ACR (ghcr.io)        | 4.29     |
+
+Desglose: ACR Basic USD 0.1666/día + USD 0.10/GB almacenado, y Container Apps
+~USD 4.29 en `minReplicas: 1` después del free grant (180.000 vCPU-s +
+360.000 GiB-s + 2M requests por mes).
+
+`minReplicas: 2` cuesta ~USD 5.92 más y **rompe un tope de USD 10/mes**, por
+eso no es el default. Lo que gana es distribución entre zonas de disponibilidad;
+el reinicio automático de un proceso colgado lo dan los health probes en ambos
+casos.
+
+Tres decisiones que sostienen ese número, y que **no conviene tocar**:
 
 1. **`workloadProfiles` queda ausente en el environment, no como `[]`.**
    Ausente = plan Consumption puro. Un array vacío crea un environment de
    "workload profiles" que cobra **USD 0.10/h de gestión (~USD 73/mes)** antes
    de que corra un solo contenedor.
 2. **No se adjunta `logAnalyticsConfiguration`.** Si lo adjuntás, la ingesta de
-   logs se factura por GB.
+   logs se factura por GB. Ojo: el CLI `az` **crea un workspace de Log
+   Analytics por defecto** aunque no le pidas nada; hay que pasarle
+   `--logs-destination none`. El Bicep omite la propiedad, así que nunca lo
+   dispara.
+3. **`minReplicas: 1`.** Mantiene el contenedor tibio sin cold start y deja
+   margen dentro del presupuesto.
 
-Bajar `minReplicas` a `1` reduce el costo a ~USD 4–5/mes, pero perdés la
-distribución entre zonas de disponibilidad.
+### Región
+
+**brazilsouth.** En la suscripción Azure for Students, una política de región
+bloquea Container Apps en casi todos lados: al sondear 8 regiones, solo
+**brazilsouth** y **eastus2** la aceptaron (`chilecentral`, `eastus`,
+`westus2`, `mexicocentral`, `westeurope`, `spaincentral` quedan rechazadas).
+Las dos permitidas cobran idéntico, así que la única diferencia es latencia,
+y para usuarios en Chile gana São Paulo por mucho. La región **no se puede
+cambiar después** sin recrear el environment.
 
 ## Requisitos
 
@@ -105,18 +139,18 @@ gh secret set ARTEMISA_API_KEYS --body "$ARTEMISA_API_KEYS"
 gh secret set METRICS_SECRET --body "$(openssl rand -hex 16)"
 gh secret set BYPASS_SECRET  --body "$(openssl rand -hex 16)"
 
-# Token de lectura de paquetes para que Container Apps pueda pull de ghcr.io.
-# Fijate que expire: ver "Rotación del token de ghcr.io" más abajo.
-gh secret set GHCR_TOKEN --body "<tu-PAT-con-read:packages>"
+# No hace falta ningún secret de registry: el Container App toma la imagen
+# con su identidad gestionada y el rol AcrPull que crea el propio Bicep.
 ```
 
 ## Paso 4 — Variables (no secretas)
 
 ```bash
-gh variable set AZURE_RESOURCE_GROUP --body "$RG"
-gh variable set IMAGE_REPOSITORY     --body "vectorg99/artemisa-backend"
-gh variable set PUBLIC_BASE_URL      --body "https://<lo-que-rellena-azure>"
-gh variable set CORS_ALLOWED_ORIGINS --body "https://artemisa-ai.netlify.app"
+gh variable set AZURE_RESOURCE_GROUP   --body "$RG"
+gh variable set AZURE_CONTAINER_REGISTRY --body "artemisarego"
+gh variable set IMAGE_REPOSITORY       --body "artemisa-backend"
+gh variable set PUBLIC_BASE_URL        --body "https://<lo-que-rellena-azure>"
+gh variable set CORS_ALLOWED_ORIGINS   --body "https://artemisa-ai.netlify.app"
 ```
 
 `PUBLIC_BASE_URL` es la URL pública del propio backend. En el primer deploy no
@@ -143,15 +177,14 @@ az deployment group create \
   --name artemisa-backend \
   --template-file infra/main.bicep \
   --parameters \
-      imageRepository="vectorg99/artemisa-backend" \
+      imageRepository="artemisa-backend" \
       imageTag="<tag-inmutable>" \
       publicBaseUrl="https://<fqdn>" \
       corsAllowedOrigins="https://artemisa-ai.netlify.app" \
       artemisaApiKeys="$ARTEMISA_API_KEYS" \
       metricsSecret="$(openssl rand -hex 16)" \
       bypassSecret="$(openssl rand -hex 16)" \
-      ghcrUsername="VECTORG99" \
-      ghcrToken="<tu-PAT>"
+      containerRegistryName="artemisarego"
 ```
 
 ## Paso 6 — Verificar
@@ -209,7 +242,7 @@ az containerapp revision list -g "$RG" -n artemisa-backend -o table
 
 # Volver a una imagen anterior
 az containerapp update -g "$RG" -n artemisa-backend \
-  --image ghcr.io/vectorg99/artemisa-backend:<tag-anterior>
+  --image artemisarego.azurecr.io/artemisa-backend:<tag-anterior>
 ```
 
 El workflow ya revierte automáticamente si el health gate falla. El rollback
@@ -223,18 +256,21 @@ az containerapp replica list -g "$RG" -n artemisa-backend -o table
 az containerapp revision list -g "$RG" -n artemisa-backend -o table
 ```
 
-### Rotación del token de ghcr.io
+### Credenciales del registry
 
-Container Apps hace pull solo cuando necesita una réplica nueva (arranque,
-scale-out, nuevo deploy). Un token expirado no corta las réplicas corriendo,
-pero **impide escalar y desplegar**. Un PAT clásico puede no expirar; si usás
-tokens de acceso fine-grained, caduca a lo sumo a un año. Rotá el secret de
-GitHub antes de que venza.
+No hay ninguna que rotar. El Container App tiene una identidad asignada del
+sistema con el rol `AcrPull` sobre el ACR, y las credenciales de admin del
+registro están deshabilitadas, así que el rol es el único camino de pull.
+
+Si volvés a `ghcr.io` para ahorrar los USD 5/mes, ese deja de ser cierto: vas
+a necesitar un PAT con `read:packages` como secret de GitHub, y un token
+vencido **no corta las réplicas corriendo pero impide escalar y desplegar**,
+o sea que falla tarde y en silencio.
 
 ### Monitoreo de costo
 
 Cost Management → Cost analysis, filtro por resource group `rg-artemisa`.
-Esperá ~USD 10–12/mes. Si salta a ~USD 80, lo más probable es que alguien haya
+Esperá ~USD 9.29/mes. Si salta a ~USD 60, lo más probable es que alguien haya
 agregado `workloadProfiles` al environment o un perfil Dedicated.
 
 Para confirmar que el environment sigue Consumption-only:
@@ -265,8 +301,8 @@ az monitor metrics alert create \
 az group delete --name "$RG" --yes --no-wait
 ```
 
-Borra el resource group completo. Las imágenes en `ghcr.io` y los secretos de
-GitHub quedan intactos.
+Borra el resource group completo: ACR, environment y Container App. Los
+secretos y variables de GitHub quedan intactos.
 
 ---
 

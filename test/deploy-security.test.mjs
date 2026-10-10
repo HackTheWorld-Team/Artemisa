@@ -99,6 +99,21 @@ describe('Azure Container Apps deployment security (ADR-0009)', () => {
     assert.match(bicep, /minReplicas:\s*minReplicas/);
   });
 
+  it('infra/main.bicep gives the container app a managed identity for ACR, not a stored secret', () => {
+    assert.match(bicep, /identity:\s*\{\s*type:\s*'SystemAssigned'/);
+    assert.match(bicep, /server:\s*acrLoginServer[\s\S]{0,120}identity:\s*'system'/);
+    // A registry credential would mean a token to store and rotate; an
+    // expired one silently blocks scale-out and new deploys.
+    assert.doesNotMatch(bicep, /passwordSecretRef/);
+    assert.doesNotMatch(bicep, /ghcr/);
+  });
+
+  it('infra/main.bicep grants AcrPull and disables ACR admin credentials', () => {
+    assert.match(bicep, /roleDefinitionId:\s*acrPullRoleDefinitionId/);
+    assert.match(bicep, /principalId:\s*backend\.identity\.principalId/);
+    assert.match(bicep, /adminUserEnabled:\s*false/);
+  });
+
   it('workflow gates the deploy on /api/health and rolls back when the gate fails', () => {
     assert.match(workflow, /Health gate/);
     assert.match(workflow, /\/api\/health/);

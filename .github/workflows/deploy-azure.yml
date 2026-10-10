@@ -7,10 +7,12 @@ name: Deploy backend to Azure Container Apps
 # NEXT_PUBLIC_API_URL rebuilt against the new backend URL when that changes.
 #
 # Required GitHub configuration (see infra/README.md for the setup commands):
-#   Variables: AZURE_RESOURCE_GROUP, IMAGE_REPOSITORY,
+#   Variables: AZURE_RESOURCE_GROUP, AZURE_CONTAINER_REGISTRY, IMAGE_REPOSITORY,
 #              PUBLIC_BASE_URL, CORS_ALLOWED_ORIGINS
 #   Secrets:   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
-#              GHCR_TOKEN, ARTEMISA_API_KEYS, METRICS_SECRET, BYPASS_SECRET
+#              ARTEMISA_API_KEYS, METRICS_SECRET, BYPASS_SECRET
+# No registry secret: the image goes to Azure Container Registry and the
+# container app pulls it with a system-assigned managed identity (AcrPull).
 
 on:
   workflow_dispatch:
@@ -33,6 +35,8 @@ env:
   APP: artemisa-backend
   DEPLOYMENT: artemisa-backend
   IMAGE_REPO: ${{ vars.IMAGE_REPOSITORY }}
+  ACR_NAME: ${{ vars.AZURE_CONTAINER_REGISTRY }}
+  ACR_LOGIN_SERVER: ${{ vars.AZURE_CONTAINER_REGISTRY }}.azurecr.io
 
 jobs:
   deploy:
@@ -45,12 +49,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v2
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # az acr login configures docker's credentials for ACR using the OIDC
+      # session. No PAT: the container app pulls with its own managed identity.
+      - name: Log in to Azure Container Registry
+        run: az acr login --name "$ACR_NAME" --only-show-errors
 
       - name: Compute image tag
         id: meta
@@ -59,7 +68,7 @@ jobs:
           # Immutable tag: never reuse a tag for different content, so a
           # rollback target always still points at the image it named.
           echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
-          echo "image=ghcr.io/${IMAGE_REPO}:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          echo "image=${ACR_LOGIN_SERVER}/${IMAGE_REPO}:${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push backend image
         uses: docker/build-push-action@v6
@@ -68,16 +77,9 @@ jobs:
           file: docker/Dockerfile.backend
           push: true
           tags: |
-            ghcr.io/${{ env.IMAGE_REPO }}:${{ steps.meta.outputs.tag }}
+            ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_REPO }}:${{ steps.meta.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Log in to Azure (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Capture current image (rollback target)
         id: prev
@@ -108,8 +110,7 @@ jobs:
               "artemisaApiKeys":    { "value": "${{ secrets.ARTEMISA_API_KEYS }}" },
               "metricsSecret":      { "value": "${{ secrets.METRICS_SECRET }}" },
               "bypassSecret":       { "value": "${{ secrets.BYPASS_SECRET }}" },
-              "ghcrUsername":       { "value": "${{ github.actor }}" },
-              "ghcrToken":          { "value": "${{ secrets.GHCR_TOKEN }}" }
+              "containerRegistryName": { "value": "${ACR_NAME}" }
             }
           }
           JSON

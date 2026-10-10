@@ -17,8 +17,8 @@ targetScope = 'resourceGroup'
 @description('Azure region. Pick one with availability zones and low latency for your users.')
 param location string = resourceGroup().location
 
-@description('ghcr.io image repository WITHOUT tag, e.g. vectorg99/artemisa-backend.')
-param imageRepository string
+@description('Repository name inside the registry, e.g. artemisa-backend. The image resolves to <registry>.azurecr.io/<imageRepository>:<imageTag>.')
+param imageRepository string = 'artemisa-backend'
 
 @description('Immutable image tag produced by the deploy workflow (git SHA by default).')
 param imageTag string
@@ -55,17 +55,38 @@ param metricsSecret string
 @description('Emergency auth override (BYPASS_SECRET). Redacted from logs automatically.')
 param bypassSecret string
 
-@secure()
-@description('ghcr.io username for image pull.')
-param ghcrUsername string
+@description('Globally unique Azure Container Registry login server, e.g. artemisarego.azurecr.io. ACR names are unique across all of Azure, so change this if creation fails with a name conflict.')
+param containerRegistryName string = 'artemisarego'
 
-@secure()
-@description('ghcr.io token with packages:read (a classic PAT with read:packages).')
-param ghcrToken string
+@description('Registry SKU. Basic is ~USD 5.00/month (USD 0.1666/day) plus USD 0.10/GB stored; anything higher is wasted on a single-image backend.')
+@allowed(['Basic', 'Standard', 'Premium'])
+param containerRegistrySku string = 'Basic'
 
-var ghcrServer = 'ghcr.io'
+var acrLoginServer = '${containerRegistryName}.azurecr.io'
 var appName = 'artemisa-backend'
 var envName = 'artemisa-env'
+// AcrPull lets the container app pull its own image without any stored secret.
+var acrPullRoleDefinitionId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+)
+
+// --- Container Registry (source of the image; managed identity, no secrets) --
+// Replaces ghcr.io + a PAT. A token expires and silently stops scale-out and
+// new deploys; a system-assigned identity has nothing to rotate.
+resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
+  name: containerRegistryName
+  location: location
+  sku: {
+    name: containerRegistrySku
+  }
+  properties: {
+    // Admin credentials are disabled on purpose: they would be a second, more
+    // privileged pull path that bypasses the AcrPull role assignment.
+    adminUserEnabled: false
+    publicNetworkAccess: 'Enabled'
+  }
+}
 
 // --- Container Apps Environment (Consumption-only, no Log Analytics) --------
 resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
@@ -82,6 +103,11 @@ resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
 resource backend 'Microsoft.App/containerApps@2024-03-01' = {
   name: appName
   location: location
+  // System-assigned identity is what pulls the image from ACR. Nothing to
+  // store, nothing to expire.
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     managedEnvironmentId: env.id
     configuration: {
@@ -96,13 +122,13 @@ resource backend 'Microsoft.App/containerApps@2024-03-01' = {
       }
       registries: [
         {
-          server: ghcrServer
-          username: ghcrUsername
-          passwordSecretRef: 'ghcr-token'
+          server: acrLoginServer
+          // `identity` rather than username/passwordSecretRef: the platform
+          // exchanges the system-assigned identity for an AcrPull token.
+          identity: 'system'
         }
       ]
       secrets: [
-        { name: 'ghcr-token', value: ghcrToken }
         { name: 'artemisa-api-keys', value: artemisaApiKeys }
         { name: 'metrics-secret', value: metricsSecret }
         { name: 'bypass-secret', value: bypassSecret }
@@ -126,7 +152,7 @@ resource backend 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'backend'
-          image: '${ghcrServer}/${imageRepository}:${imageTag}'
+          image: '${acrLoginServer}/${imageRepository}:${imageTag}'
           resources: {
             // Bicep has no decimal literals, and its type definition for this
             // property says "int" — but the ARM API accepts a decimal string
@@ -190,5 +216,23 @@ resource backend 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
+// --- AcrPull: let the container app pull its own image ---------------------
+// Ordering note: the role assignment needs the identity, so it is created
+// AFTER the container app. On a brand new environment the first revision can
+// briefly fail to pull while the assignment propagates (typically under a
+// minute); Container Apps retries the pull and recovers on its own. The
+// health gate in the deploy workflow waits for that.
+resource acrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, backend.id, 'AcrPull')
+  scope: acr
+  properties: {
+    roleDefinitionId: acrPullRoleDefinitionId
+    principalId: backend.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 output fqdn string = backend.properties.configuration.ingress.fqdn
 output baseUrl string = 'https://${backend.properties.configuration.ingress.fqdn}'
+output containerRegistry string = acrLoginServer
+output image string = '${acrLoginServer}/${imageRepository}:${imageTag}'

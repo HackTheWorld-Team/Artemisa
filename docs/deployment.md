@@ -169,20 +169,33 @@ the one-time Azure and GitHub setup, is in `infra/README.md`.
 Deploy runs from `.github/workflows/deploy-azure.yml`:
 
 - `push` to `master` touching the backend (release), or manual dispatch.
-- Builds `docker/Dockerfile.backend`, pushes to `ghcr.io`, deploys the Bicep,
-  then gates on `https://<fqdn>/api/health` returning 200.
+- Builds `docker/Dockerfile.backend`, pushes to Azure Container Registry, deploys
+  the Bicep, then gates on `https://<fqdn>/api/health` returning 200.
 - A failing health gate reverts the container to the previous image, so a
   broken release cannot stay live and be reported as successful.
+- The image is pulled by a system-assigned managed identity with `AcrPull`, so
+  no registry credential is stored in GitHub or in the Container App.
 
-Cost holds at ~USD 10–12/month because of two settings that should not be
-"fixed" without reading `infra/README.md` first:
+Measured against the Azure Retail Prices API, the running cost is about
+**USD 9.29/month**: ACR Basic is USD 0.1666/day (USD 5.00/month) plus
+USD 0.10/GB stored, and Container Apps with `minReplicas: 1` at 0.25 vCPU /
+0.5 GiB comes to about USD 4.29/month after the free grant. Raising to
+`minReplicas: 2` adds availability-zone spread for roughly USD 5.92 more,
+which would exceed a USD 10/month budget on its own.
+
+Three settings hold that number, and none should be "fixed" without reading
+`infra/README.md` first:
 
 - `workloadProfiles` is **omitted** from the environment (not `[]`). Omitting
   it yields a Consumption-only environment; an empty array creates a workload
   profiles environment that bills a USD 0.10/h management fee (~USD 73/month)
   before a single container runs.
 - No `logAnalyticsConfiguration` is attached, so console logs are not billed
-  per GB.
+  per GB. Note that the `az` CLI creates a Log Analytics workspace by default
+  unless `--logs-destination none` is passed; the Bicep omits the property, so
+  it never triggers that.
+- `minReplicas` defaults to 1, which keeps the container warm without a cold
+  start while staying inside the budget.
 
 `TRUST_PROXY=1` and `PUBLIC_BASE_URL` are set in the Bicep, not left to
 defaults. Without `TRUST_PROXY`, Container Apps terminates TLS and Express sees
