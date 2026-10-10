@@ -25,10 +25,18 @@ on:
       - 'package-lock.json'
       - 'tsconfig.json'
       - 'infra/**'
+      # A change to the deploy pipeline has to be deployable, otherwise a fix
+      # like the missing OIDC permission sits on master doing nothing until an
+      # unrelated backend change happens to land.
+      - '.github/workflows/deploy-azure.yml'
 
 permissions:
   contents: read
-  packages: write
+  # azure/login mints a federated token against Azure AD using GitHub's OIDC
+  # endpoint. Without this permission the request has no URL to hit and login
+  # fails before any Azure call is made. The old `packages` grant is gone: the
+  # image now goes to Azure Container Registry, which needs no GitHub scope.
+  id-token: write
 
 env:
   RG: ${{ vars.AZURE_RESOURCE_GROUP }}
