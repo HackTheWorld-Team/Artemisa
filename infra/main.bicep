@@ -207,8 +207,17 @@ resource backend 'Microsoft.App/containerApps@2024-03-01' = {
               }
               initialDelaySeconds: 15
               periodSeconds: 30
-              timeoutSeconds: 5
-              failureThreshold: 3
+              // Generous on purpose. A liveness probe that fires while the app
+              // is merely slow converts a degraded response into an outage:
+              // measured latency through the platform edge runs around 700ms
+              // and spikes well past 5s, and the platform answers with
+              // `{"error":"App port is not ready"}` while the container is being
+              // replaced. With timeout 5 and threshold 3 this probe was killing
+              // a container that was working, which is exactly the cycle the
+              // probes are supposed to prevent. 10s x 6 tolerates ~3 minutes of
+              // degradation before deciding the process is genuinely wedged.
+              timeoutSeconds: 10
+              failureThreshold: 6
             }
             {
               type: 'Readiness'
@@ -216,9 +225,13 @@ resource backend 'Microsoft.App/containerApps@2024-03-01' = {
                 path: '/health/ready'
                 port: 3001
               }
-              initialDelaySeconds: 5
+              initialDelaySeconds: 10
               periodSeconds: 10
-              timeoutSeconds: 5
+              // Readiness only gates traffic, so it can afford to be strict
+              // without restarting anything. The timeout still has to clear
+              // the observed latency or the replica flaps in and out of the
+              // pool for reasons that have nothing to do with its health.
+              timeoutSeconds: 10
               failureThreshold: 3
             }
           ]
