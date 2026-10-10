@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented here.
 
+### Bug Fixes
+
+- Clear all production vulnerabilities and scope the CI audit to what ships (#776) _(security)_
+
+- Remove extra brace in generator.ts
+
+- Align docs/content assertion with 403 response _(test)_
+
+- Restrict public docs endpoint, pin advertised origin and proxy trust _(security)_
+
+- Propagate swallowed failures in backend and Creator API client _(errors)_
+
+### Chores
+
+- Pull the image with an ACR managed identity instead of a ghcr.io PAT (#774) _(deploy)_
+
+- Ignore the generated frontend/next-env.d.ts in Prettier (#776) _(lint)_
+
+- Default minReplicas to 1 to stay inside the USD 10/month cap (#774) _(deploy)_
+
+- Host the backend on Azure Container Apps (#774) _(deploy)_
+
+### Refactor
+
+- Extract shared catalog, generator and browser utilities _(creator)_
+
+### Testing
+
+- Cover lowest-coverage backend modules with executing unit tests
+
+## [v1.5.11] - 2026-08-30
+
+### Chores
+
+- V1.5.11 [skip ci] _(release)_
+
 ### Documentation
 
 - Add migration notice to README
@@ -364,19 +400,51 @@ All notable changes to this project are documented here.
 
 - Migrate backend from Render to DigitalOcean App Platform _(other)_
 
+- Relocate Docker, config and docs to reduce top-level clutter (#680) _(root)_
+
 ## [v1.2.1] - 2026-07-27
 
 ### Chores
 
 - V1.2.1 _(release)_
 
+### Documentation
+
+- Clean up outdated defensive statements and Runtime history (#674) _(readme)_
+
+### Refactor
+
+- Remove remaining Huascar references and complete rename (#632) _(repo)_
+
+- Optimize AI-facing artifacts (#667) _(generator)_
+
 ## [v1.2.0] - 2026-07-27
+
+### Bug Fixes
+
+- Pin Render starter plan, add CORS and health check, align Vercel auth _(deploy)_
 
 ### Chores
 
 - V1.2.0 _(release)_
 
+### Documentation
+
+- Restore hackathon hero, badges and Important callouts lost in rename (#665) _(readme)_
+
+### Features
+
+- Add PROMPT.md artifact and surface it in the completion screen (#668) _(generator)_
+
+### Other
+
+- Reorganize final review into explanation top, decisions below (#666) _(creator)_
+
 ## [v1.1.1] - 2026-07-27
+
+### Bug Fixes
+
+- Strip v prefix from git-cliff to prevent double-v tags (#661) _(ci)_
 
 ### Chores
 
@@ -387,24 +455,6 @@ All notable changes to this project are documented here.
 ### Bug Fixes
 
 - Strip v prefix from git-cliff to prevent double-v tags _(ci)_
-
-### Chores
-
-- V1.1.0 _(release)_
-
-- Vv0.1.0 _(release)_
-
-### Other
-
-- V1.0.0 — Artemisa hackathon-ready _(other)_
-
-## [v1.0.0] - 2026-07-27
-
-### Bug Fixes
-
-- Pin Render starter plan, add CORS and health check, align Vercel auth _(deploy)_
-
-- Strip v prefix from git-cliff to prevent double-v tags (#661) _(ci)_
 
 - Expand agent capabilities, add max autonomy, multi-custom, expandable lists (#658) _(creator)_
 
@@ -438,11 +488,13 @@ All notable changes to this project are documented here.
 
 - Change accent colour on hover, not on a timer _(ui)_
 
+### Chores
+
+- V1.1.0 _(release)_
+
+- Vv0.1.0 _(release)_
+
 ### Documentation
-
-- Clean up outdated defensive statements and Runtime history (#674) _(readme)_
-
-- Restore hackathon hero, badges and Important callouts lost in rename (#665) _(readme)_
 
 - Redesign hero with hackathon branding and for-the-badge shields (#622) _(readme)_
 
@@ -451,8 +503,6 @@ All notable changes to this project are documented here.
 - Document creator auth (#612)
 
 ### Features
-
-- Add PROMPT.md artifact and surface it in the completion screen (#668) _(generator)_
 
 - Expand skills and MCP catalogs (#647) (#659) _(catalog)_
 
@@ -478,21 +528,13 @@ All notable changes to this project are documented here.
 
 ### Other
 
-- Relocate Docker, config and docs to reduce top-level clutter (#680) _(root)_
-
-- Reorganize final review into explanation top, decisions below (#666) _(creator)_
+- V1.0.0 — Artemisa hackathon-ready _(other)_
 
 - Render review decisions in a two-column grid (#633) _(creator)_
 
 - Remove accent colour cycling, restore fixed red accent _(ui)_
 
-### Refactor
-
-- Remove remaining Huascar references and complete rename (#632) _(repo)_
-
-- Optimize AI-facing artifacts (#667) _(generator)_
-
-## [v0.1.0] - 2026-07-26
+## [v1.0.0] - 2026-07-27
 
 ### Bug Fixes
 
@@ -557,6 +599,144 @@ All notable changes to this project are documented here.
 - Align dashboard aesthetic with Creator glass/starfield (#444) (#462) _(dashboard)_
 
 - Creator UI minimalist background, fixed layout, glass polish (#465) _(frontend)_
+
+### Documentation
+
+- API reference, troubleshooting, self-hosting y apply-bundle (#576, #577) (#590)
+
+- Corregir instrucciones rotas y anotar CHANGELOG post-Runtime (#573, #578) (#589)
+
+- Document ephemeral agent env vars in README (#529)
+
+- Disable GitHub Wiki and document where docs live (#370)
+
+- Disable GitHub Wiki and document where docs live (#370)
+
+- Add SVG diagrams and screenshots to README and agent-creator (#358)
+
+- Add SVG diagrams and screenshots to README and agent-creator (#358)
+
+### Features
+
+- Add skip link, focus-visible ring, and fix heading hierarchy (#601) _(a11y)_
+
+- Add confirmation dialog before resetting draft (#599) _(creator)_
+
+- Show toast notification when draft is restored (#605) _(creator)_
+
+- Show custom option consequences before confirming (#603) _(creator)_
+
+- Browser back button navigates within the Creator (#598) _(creator)_
+
+- Implement focus trap for modals and shortcuts overlay (#596) _(a11y)_
+
+- Replace planet icons with custom SVG glassmorphism icons (#585) _(landing)_
+
+- Toggle de animaciones y scroll suave (#559, #388) (#607) _(landing+creator)_
+
+- Ruta de documentación oficial + endpoint para modelos IA (#560) (#600)
+
+- QuickStartCopy inline, landing glass styling and feature copy _(ui)_
+
+- Make QuickStartCopy inline and keep card wrapper on landing (#542) (#543) _(ui)_
+
+- Simplify QuickStartCopy and refresh landing colors for white-on-dark contrast (#528) _(ui)_
+
+- Return 410 Gone for expired agents instead of 404 _(runtime)_
+
+- Icons on landing nav links (header + footer) (#520) _(frontend)_
+
+- Add LLM models catalog — 45 models, 8 providers (#524) _(catalog)_
+
+- Expand MCP catalog from 33 to 83 servers (#517) _(catalog)_
+
+- Expand skills catalog to 55 curated entries (#515) _(catalog)_
+
+- Add recommendations for research, documentation and custom purposes (#511) _(tree)_
+
+- Ephemeral registered agents with TTL and per-IP cooldown (#503) _(runtime)_
+
+- Branded 404 page and global error boundary (#502) _(frontend)_
+
+- Endpoint machine-friendly para agentes IA + protocolo 'huascar startup' _(api/creator)_
+
+- Add public agent protocol endpoints and Huascar startup onboarding _(creator)_
+
+- Multi-format generator for Cursor, Devin, CodeRabbit, Kilo Code and AGENTS.md _(creator)_
+
+- Multi-format generator for Cursor, Devin, CodeRabbit, Kilo Code and AGENTS.md _(creator)_
+
+- Add success micro-animation to CompletionScreen (#442) (#459) _(creator)_
+
+- Add lightweight syntax highlighting to artifact preview (#443) (#460) _(creator)_
+
+- Expand MCP catalog from 12 to 33 servers (#448) (#463) _(catalog)_
+
+### Other
+
+- Bump version to 1.0.0 and add engines field (#593) _(other)_
+
+- Eliminar documentación expirada del Runtime (#597) _(other)_
+
+- Reposicionar Huascar como generador de archivos (#582) (#592) _(other)_
+
+- Pantalla final con ZIP, pasos fijos y tab por defecto (#567) (#588) _(creator)_
+
+- Remove the Runtime from the backend (#584) (#586) _(other)_
+
+- Add aria-labels to landing nav links (#537) _(frontend)_
+
+- Remove dead cn() re-export from glass.ts (#538) _(frontend)_
+
+- Remove unused files, exports and ghost deps (#526) _(dead-code)_
+
+- Remove sdk/ prototype (#523) _(structure)_
+
+- Remove dead Dashboard UI for the legacy runtime (#501) _(frontend)_
+
+### Performance
+
+- Parallelize test suite with --test-concurrency and CI sharding (#412) (#540) _(tests)_
+
+- Reduce landing bundle with code splitting (#535) _(frontend)_
+
+- Parallelize test suite with --test-concurrency and CI sharding (#412) _(tests)_
+
+- Respect prefers-reduced-motion and pause space-simulation when hidden (#516) _(frontend)_
+
+- Minimal Service Worker with stale-while-revalidate (#514) _(frontend)_
+
+- Dedup in-flight evaluate requests + last-result memo (#513) _(creator)_
+
+- Stale-while-revalidate cache for Creator definition (#522) _(agent-creator)_
+
+- Lazy-load runtime engine modules to speed up Creator cold start (#512) _(backend)_
+
+- Compress, cache and memoize Creator responses (#510) _(backend)_
+
+- Eliminate redundant evaluateDecisionTree call (#474) _(generator)_
+
+- Share npm cache across jobs, docker buildx with layer caching (#471) _(ci)_
+
+- Replace npx serve with Caddy in Dockerfile.agent-creator (#469) _(docker)_
+
+- Use BuildKit cache mounts, remove duplicate build tools (#467) _(docker)_
+
+- Native Node healthcheck + move pino-pretty to devDependencies (#470) _(docker)_
+
+- Enable TypeScript incremental compilation (#472) _(build)_
+
+### Testing
+
+- Edge-case tests for slugify/stableValue/inferCloudProvider (#508) (#539) _(creator)_
+
+- Edge-case tests for slugify/stableValue/inferCloudProvider (#508) _(creator)_
+
+- Unit tests for getSkillById/getMcpById (#504) (#532) _(creator)_
+
+## [v0.1.0] - 2026-07-26
+
+### Bug Fixes
 
 - Integrate useTranslations into real components (#429) _(frontend)_
 
@@ -732,20 +912,6 @@ All notable changes to this project are documented here.
 
 ### Documentation
 
-- API reference, troubleshooting, self-hosting y apply-bundle (#576, #577) (#590)
-
-- Corregir instrucciones rotas y anotar CHANGELOG post-Runtime (#573, #578) (#589)
-
-- Document ephemeral agent env vars in README (#529)
-
-- Disable GitHub Wiki and document where docs live (#370)
-
-- Disable GitHub Wiki and document where docs live (#370)
-
-- Add SVG diagrams and screenshots to README and agent-creator (#358)
-
-- Add SVG diagrams and screenshots to README and agent-creator (#358)
-
 - Agregar READMEs a subproyectos del monorepo
 
 - Agregar READMEs a subproyectos del monorepo
@@ -791,60 +957,6 @@ All notable changes to this project are documented here.
 - Add Huascar title to README
 
 ### Features
-
-- Add skip link, focus-visible ring, and fix heading hierarchy (#601) _(a11y)_
-
-- Add confirmation dialog before resetting draft (#599) _(creator)_
-
-- Show toast notification when draft is restored (#605) _(creator)_
-
-- Show custom option consequences before confirming (#603) _(creator)_
-
-- Browser back button navigates within the Creator (#598) _(creator)_
-
-- Implement focus trap for modals and shortcuts overlay (#596) _(a11y)_
-
-- Replace planet icons with custom SVG glassmorphism icons (#585) _(landing)_
-
-- Toggle de animaciones y scroll suave (#559, #388) (#607) _(landing+creator)_
-
-- Ruta de documentación oficial + endpoint para modelos IA (#560) (#600)
-
-- QuickStartCopy inline, landing glass styling and feature copy _(ui)_
-
-- Make QuickStartCopy inline and keep card wrapper on landing (#542) (#543) _(ui)_
-
-- Simplify QuickStartCopy and refresh landing colors for white-on-dark contrast (#528) _(ui)_
-
-- Return 410 Gone for expired agents instead of 404 _(runtime)_
-
-- Icons on landing nav links (header + footer) (#520) _(frontend)_
-
-- Add LLM models catalog — 45 models, 8 providers (#524) _(catalog)_
-
-- Expand MCP catalog from 33 to 83 servers (#517) _(catalog)_
-
-- Expand skills catalog to 55 curated entries (#515) _(catalog)_
-
-- Add recommendations for research, documentation and custom purposes (#511) _(tree)_
-
-- Ephemeral registered agents with TTL and per-IP cooldown (#503) _(runtime)_
-
-- Branded 404 page and global error boundary (#502) _(frontend)_
-
-- Endpoint machine-friendly para agentes IA + protocolo 'huascar startup' _(api/creator)_
-
-- Add public agent protocol endpoints and Huascar startup onboarding _(creator)_
-
-- Multi-format generator for Cursor, Devin, CodeRabbit, Kilo Code and AGENTS.md _(creator)_
-
-- Multi-format generator for Cursor, Devin, CodeRabbit, Kilo Code and AGENTS.md _(creator)_
-
-- Add success micro-animation to CompletionScreen (#442) (#459) _(creator)_
-
-- Add lightweight syntax highlighting to artifact preview (#443) (#460) _(creator)_
-
-- Expand MCP catalog from 12 to 33 servers (#448) (#463) _(catalog)_
 
 - Creator UI Redesign (Base implementation) (#391)
 
@@ -974,59 +1086,9 @@ All notable changes to this project are documented here.
 
 ### Other
 
-- Bump version to 1.0.0 and add engines field (#593) _(other)_
-
-- Eliminar documentación expirada del Runtime (#597) _(other)_
-
-- Reposicionar Huascar como generador de archivos (#582) (#592) _(other)_
-
-- Pantalla final con ZIP, pasos fijos y tab por defecto (#567) (#588) _(creator)_
-
-- Remove the Runtime from the backend (#584) (#586) _(other)_
-
-- Add aria-labels to landing nav links (#537) _(frontend)_
-
-- Remove dead cn() re-export from glass.ts (#538) _(frontend)_
-
-- Remove unused files, exports and ghost deps (#526) _(dead-code)_
-
-- Remove sdk/ prototype (#523) _(structure)_
-
-- Remove dead Dashboard UI for the legacy runtime (#501) _(frontend)_
-
 - Remove emojis from source files _(other)_
 
 ### Performance
-
-- Parallelize test suite with --test-concurrency and CI sharding (#412) (#540) _(tests)_
-
-- Reduce landing bundle with code splitting (#535) _(frontend)_
-
-- Parallelize test suite with --test-concurrency and CI sharding (#412) _(tests)_
-
-- Respect prefers-reduced-motion and pause space-simulation when hidden (#516) _(frontend)_
-
-- Minimal Service Worker with stale-while-revalidate (#514) _(frontend)_
-
-- Dedup in-flight evaluate requests + last-result memo (#513) _(creator)_
-
-- Stale-while-revalidate cache for Creator definition (#522) _(agent-creator)_
-
-- Lazy-load runtime engine modules to speed up Creator cold start (#512) _(backend)_
-
-- Compress, cache and memoize Creator responses (#510) _(backend)_
-
-- Eliminate redundant evaluateDecisionTree call (#474) _(generator)_
-
-- Share npm cache across jobs, docker buildx with layer caching (#471) _(ci)_
-
-- Replace npx serve with Caddy in Dockerfile.agent-creator (#469) _(docker)_
-
-- Use BuildKit cache mounts, remove duplicate build tools (#467) _(docker)_
-
-- Native Node healthcheck + move pino-pretty to devDependencies (#470) _(docker)_
-
-- Enable TypeScript incremental compilation (#472) _(build)_
 
 - Enable WAL mode, prepared statements, and batch transactions (#432) _(store)_
 
@@ -1051,12 +1113,6 @@ All notable changes to this project are documented here.
 - Allow overriding OpenAI model via MODEL_ID env var
 
 ### Testing
-
-- Edge-case tests for slugify/stableValue/inferCloudProvider (#508) (#539) _(creator)_
-
-- Edge-case tests for slugify/stableValue/inferCloudProvider (#508) _(creator)_
-
-- Unit tests for getSkillById/getMcpById (#504) (#532) _(creator)_
 
 - Add E2E agent creation demo — full flow with verification (#359)
 
