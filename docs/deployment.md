@@ -177,19 +177,26 @@ Deploy runs from `.github/workflows/deploy-azure.yml`:
   no registry credential is stored in GitHub or in the Container App.
 
 Measured against the Azure Retail Prices API, the running cost is about
-**USD 11.26/month**: ACR Basic is USD 0.1666/day (USD 5.00/month) plus
-USD 0.10/GB stored, and Container Apps with `minReplicas: 1` at 0.5 vCPU /
-0.5 GiB comes to about USD 6.26/month after the free grant.
+**USD 9.29/month**: ACR Basic is USD 0.1666/day (USD 5.00/month) plus
+USD 0.10/GB stored, and Container Apps with `minReplicas: 1` at 0.25 vCPU /
+0.5 GiB comes to about USD 4.29/month after the free grant.
 
-Sizing is set by measurement, not by guesswork. At 0.25 vCPU the API answered a
-plain `/api/health` in 700-900ms and stopped responding to a handful of
-concurrent requests, while memory sat at ~68MB of 710MB — the container was
-CPU-starved, not memory-starved. 0.5 vCPU fixes that. `concurrentRequests: 3`
-scales out earlier so a burst does not pile onto one already-busy replica.
+Sizing is constrained, not chosen. Consumption accepts only **fixed CPU/memory
+pairs** — 0.25/0.5Gi, 0.5/1.0Gi, 0.75/1.5Gi, 1.0/2.0Gi and so on; anything else
+is rejected with `ContainerAppInvalidResourceTotal`. Measured behaviour says the
+container is CPU-starved: at 0.25 vCPU `/api/health` (a pure in-memory check)
+answered in 700-900ms and stopped responding under a handful of concurrent
+requests, while memory sat at 68MB of a 710MB limit. The next valid pair,
+0.5/1.0Gi, costs about USD 15.21/month with the registry — over the ceiling.
 
-`minReplicas: 2` is **not affordable** here: even at 0.25 vCPU it costs about
-USD 15.21/month including the registry, which is over the ceiling. This
-deployment therefore has a single replica and no availability-zone spread.
+So the only lever left is `concurrentRequests: 3`, which scales out earlier so
+a burst adds a replica before the current one drowns. Scale-out is metered per
+second, so a few minutes of extra capacity under a spike costs cents rather than
+locking in the price of a permanently larger replica.
+
+`minReplicas: 2` is also unaffordable: at 0.25/0.5Gi it is about USD
+15.21/month with the registry. This deployment therefore has a single replica
+and no availability-zone spread.
 
 Three settings hold that number, and none should be "fixed" without reading
 `infra/README.md` first:

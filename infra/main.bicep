@@ -45,10 +45,10 @@ param minReplicas int = 1
 @maxValue(25)
 param maxReplicas int = 5
 
-@description('vCPU per replica. Measured: at 0.25 the API answered a plain /api/health in 700-900ms and saturated under a handful of concurrent requests, so 0.25 is starved for this stack (Express + helmet + compression + rate limiting) even though memory stays at ~68MB. 0.5 keeps latency sane and still fits the budget.')
-param cpu string = '0.5'
+@description('vCPU per replica. Measured: at 0.25 the API answered a plain /api/health in 700-900ms and stopped responding under a handful of concurrent requests, while memory sat at 68MB of 710MB. The container is CPU-starved, not memory-starved. 0.5 would fix it but is NOT affordable here: Consumption only accepts fixed CPU/memory pairs ([0.25,0.5Gi], [0.5,1.0Gi], [0.75,1.5Gi], ...) and the next pair after 0.25/0.5Gi costs ~USD 15.21/month with the registry, over the ceiling. Scale-out via the HTTP rule is the remaining lever.')
+param cpu string = '0.25'
 
-@description('Memory per replica.')
+@description('Memory per replica. Must form one of the fixed pairs Consumption accepts with `cpu`: 0.25/0.5Gi, 0.5/1.0Gi, 0.75/1.5Gi, 1.0/2.0Gi and so on. Any other combination is rejected with ContainerAppInvalidResourceTotal.')
 param memory string = '0.5Gi'
 
 @secure()

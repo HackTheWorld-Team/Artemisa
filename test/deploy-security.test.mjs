@@ -78,6 +78,39 @@ describe('Azure Container Apps deployment security (ADR-0009)', () => {
     assert.match(bicep, /name:\s*'TRUST_PROXY',\s*value:\s*'1'/);
   });
 
+  it('infra/main.bicep uses a CPU/memory pair Consumption actually accepts', () => {
+    // Consumption only allows fixed pairs. Anything else is rejected at deploy
+    // time with ContainerAppInvalidResourceTotal, which costs a failed deploy
+    // rather than a config error anyone sees locally.
+    const VALID_PAIRS = [
+      [0.25, 0.5],
+      [0.5, 1],
+      [0.75, 1.5],
+      [1, 2],
+      [1.25, 2.5],
+      [1.5, 3],
+      [1.75, 3.5],
+      [2, 4],
+    ];
+    const cpu = Number((bicep.match(/param cpu string = '([\d.]+)'/) || [])[1]);
+    const gib = Number((bicep.match(/param memory string = '([\d.]+)Gi'/) || [])[1]);
+    assert.ok(cpu > 0 && gib > 0, `could not read cpu/memory from the Bicep: cpu=${cpu} gib=${gib}`);
+    assert.ok(
+      VALID_PAIRS.some(([c, g]) => c === cpu && g === gib),
+      `${cpu} vCPU / ${gib}Gi is not a valid Consumption pair; allowed: ` +
+        VALID_PAIRS.map(([c, g]) => `${c}/${g}Gi`).join(', '),
+    );
+  });
+
+  it('infra/main.bicep scales out before a single replica drowns', () => {
+    // Measured: at concurrency 10 the lone replica absorbed the whole burst and
+    // stopped answering. 3 adds a replica earlier; scale-out is metered per
+    // second, so this costs cents under a spike instead of a larger always-on
+    // replica.
+    const conc = Number((bicep.match(/concurrentRequests: '(\d+)'/) || [])[1]);
+    assert.ok(conc > 0 && conc <= 5, `concurrentRequests should be <= 5, got ${conc}`);
+  });
+
   it('infra/main.bicep takes PUBLIC_BASE_URL from a parameter, not a hardcoded host', () => {
     assert.match(bicep, /name:\s*'PUBLIC_BASE_URL',\s*value:\s*publicBaseUrl/);
     assert.doesNotMatch(bicep, /PUBLIC_BASE_URL[^}\n]*https?:\/\//);

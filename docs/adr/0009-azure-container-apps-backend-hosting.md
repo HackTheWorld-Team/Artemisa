@@ -15,7 +15,7 @@ Accepted
 
 ## Decision
 
-- Deploy **only the backend** to Azure Container Apps on the Consumption plan, at about USD 11.26/month with `minReplicas: 1` and 0.5 vCPU. The frontend stays on Netlify and is not part of this deploy path. `agent-creator/` is not deployed at all (legacy, superseded by `frontend/agents/new`).
+- Deploy **only the backend** to Azure Container Apps on the Consumption plan, at about USD 9.29/month with `minReplicas: 1`. The frontend stays on Netlify and is not part of this deploy path. `agent-creator/` is not deployed at all (legacy, superseded by `frontend/agents/new`).
 - `infra/main.bicep` owns the infrastructure. It creates one `Microsoft.ContainerRegistry`, one `Microsoft.App/managedEnvironments` and one `Microsoft.App/containerApps`, plus the `AcrPull` role assignment that connects them.
 - `workloadProfiles` is **omitted** from the environment, not set to `[]`. Omitting it yields a Consumption-only environment. An empty array creates a workload profiles environment, which bills a USD 0.10/h management fee (~USD 73/month) before any container runs.
 - No `logAnalyticsConfiguration` and no `appInsightsConfiguration` are attached, so console output is not billed per GB ingested.
