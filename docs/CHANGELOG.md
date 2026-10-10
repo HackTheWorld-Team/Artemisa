@@ -4,7 +4,17 @@ All notable changes to this project are documented here.
 
 ### Bug Fixes
 
+- Stop the liveness probe from restarting a merely slow container _(deploy)_
+
+## [v1.5.17] - 2026-10-10
+
+### Bug Fixes
+
 - Keep the only valid CPU/memory pair and scale out earlier instead _(deploy)_
+
+### Chores
+
+- V1.5.17 [skip ci] _(release)_
 
 ## [v1.5.16] - 2026-10-10
 
