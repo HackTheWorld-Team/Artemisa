@@ -102,6 +102,28 @@ describe('Azure Container Apps deployment security (ADR-0009)', () => {
     );
   });
 
+  it('infra/main.bicep does not let the liveness probe restart a merely slow app', () => {
+    // Observed: the platform edge adds ~700ms and spikes past 5s, and answers
+    // `{"error":"App port is not ready"}` while the container is replaced. With
+    // timeoutSeconds 5 and failureThreshold 3 the probe was killing a working
+    // container, which turns a slow response into an outage. Liveness has to
+    // tolerate degradation; it exists to catch a wedged process, not a busy one.
+    const block = bicep.slice(bicep.indexOf("type: 'Liveness'"), bicep.indexOf("type: 'Readiness'"));
+    const timeout = Number((block.match(/timeoutSeconds: (\d+)/) || [])[1]);
+    const threshold = Number((block.match(/failureThreshold: (\d+)/) || [])[1]);
+    assert.ok(timeout >= 10, `liveness timeoutSeconds should be >= 10, got ${timeout}`);
+    assert.ok(threshold >= 6, `liveness failureThreshold should be >= 6, got ${threshold}`);
+    // A restart fires only after `threshold` consecutive failures. Each probe
+    // attempt is capped at `timeout` seconds and attempts are `period` apart,
+    // so the window is threshold * (timeout + period), not threshold * timeout.
+    const period = Number((block.match(/periodSeconds: (\d+)/) || [])[1]);
+    const worstCaseSeconds = threshold * (timeout + period);
+    assert.ok(
+      worstCaseSeconds >= 180,
+      `liveness gives up after only ${worstCaseSeconds}s of failures; that restarts a slow-but-working container`,
+    );
+  });
+
   it('infra/main.bicep scales out before a single replica drowns', () => {
     // Measured: at concurrency 10 the lone replica absorbed the whole burst and
     // stopped answering. 3 adds a replica earlier; scale-out is metered per
