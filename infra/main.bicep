@@ -31,8 +31,8 @@ param publicBaseUrl string
 
 @minValue(1)
 @maxValue(10)
-@description('Minimum replicas. Keep >= 1 so the API never cold-starts. 2 puts replicas across availability zones.')
-param minReplicas int = 2
+@description('Minimum replicas. 1 keeps the API always warm (no cold start) at ~USD 4.29/month, which stays inside a USD 10/month budget with room to spare. 2 adds availability-zone spread but costs ~USD 10.21/month and consumes the whole budget. Either value gets automatic restart of a wedged process from the health probes.')
+param minReplicas int = 1
 
 @maxValue(25)
 param maxReplicas int = 5
