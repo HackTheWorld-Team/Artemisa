@@ -4,7 +4,17 @@ All notable changes to this project are documented here.
 
 ### Bug Fixes
 
+- Give the backend enough CPU, since DigitalOcean is gone and this is the only API _(deploy)_
+
+## [v1.5.15] - 2026-10-10
+
+### Bug Fixes
+
 - Use the ACR admin credential, since express environments reject managed identity _(deploy)_
+
+### Chores
+
+- V1.5.15 [skip ci] _(release)_
 
 ## [v1.5.14] - 2026-10-10
 
