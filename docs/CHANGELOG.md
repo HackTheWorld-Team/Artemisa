@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ### Bug Fixes
 
+- Grant id-token write so azure/login can mint its federated token _(ci)_
+
+## [v1.5.12] - 2026-10-10
+
+### Bug Fixes
+
 - Clear all production vulnerabilities and scope the CI audit to what ships (#776) _(security)_
 
 - Remove extra brace in generator.ts
@@ -15,6 +21,8 @@ All notable changes to this project are documented here.
 - Propagate swallowed failures in backend and Creator API client _(errors)_
 
 ### Chores
+
+- V1.5.12 [skip ci] _(release)_
 
 - Pull the image with an ACR managed identity instead of a ghcr.io PAT (#774) _(deploy)_
 
