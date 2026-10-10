@@ -160,7 +160,59 @@ The `.do/app.yaml` at the project root deploys the **backend only** as a Docker 
 
 ---
 
-## 7. Frontend Deploy (Netlify) — Verifying Production Matches `master`
+## 7. Azure Container Apps (backend only, ~USD 10/month)
+
+`infra/main.bicep` deploys **only the backend** to Azure Container Apps on the
+Consumption plan. The frontend stays on Netlify. Full walkthrough, including
+the one-time Azure and GitHub setup, is in `infra/README.md`.
+
+Deploy runs from `.github/workflows/deploy-azure.yml`:
+
+- `push` to `master` touching the backend (release), or manual dispatch.
+- Builds `docker/Dockerfile.backend`, pushes to Azure Container Registry, deploys
+  the Bicep, then gates on `https://<fqdn>/api/health` returning 200.
+- A failing health gate reverts the container to the previous image, so a
+  broken release cannot stay live and be reported as successful.
+- The image is pulled by a system-assigned managed identity with `AcrPull`, so
+  no registry credential is stored in GitHub or in the Container App.
+
+Measured against the Azure Retail Prices API, the running cost is about
+**USD 9.29/month**: ACR Basic is USD 0.1666/day (USD 5.00/month) plus
+USD 0.10/GB stored, and Container Apps with `minReplicas: 1` at 0.25 vCPU /
+0.5 GiB comes to about USD 4.29/month after the free grant. Raising to
+`minReplicas: 2` adds availability-zone spread for roughly USD 5.92 more,
+which would exceed a USD 10/month budget on its own.
+
+Three settings hold that number, and none should be "fixed" without reading
+`infra/README.md` first:
+
+- `workloadProfiles` is **omitted** from the environment (not `[]`). Omitting
+  it yields a Consumption-only environment; an empty array creates a workload
+  profiles environment that bills a USD 0.10/h management fee (~USD 73/month)
+  before a single container runs.
+- No `logAnalyticsConfiguration` is attached, so console logs are not billed
+  per GB. Note that the `az` CLI creates a Log Analytics workspace by default
+  unless `--logs-destination none` is passed; the Bicep omits the property, so
+  it never triggers that.
+- `minReplicas` defaults to 1, which keeps the container warm without a cold
+  start while staying inside the budget.
+
+`TRUST_PROXY=1` and `PUBLIC_BASE_URL` are set in the Bicep, not left to
+defaults. Without `TRUST_PROXY`, Container Apps terminates TLS and Express sees
+the proxy IP as the client IP; the per-IP rate limiter then treats every user
+as one source and blocks them all after `RATE_LIMIT_GLOBAL` requests per
+minute.
+
+To point the Netlify frontend at it, set `NEXT_PUBLIC_API_URL` to the Container
+App URL and trigger a **rebuild** — `NEXT_PUBLIC_*` values are baked into the
+bundle at build time. The same value goes to `ARTEMISA_API_KEYS` in Netlify as
+`NEXT_PUBLIC_API_KEY` when auth is enabled, exactly as for DigitalOcean above.
+
+`agent-creator/` is not deployed; the active Creator is `frontend/agents/new`.
+
+---
+
+## 8. Frontend Deploy (Netlify) — Verifying Production Matches `master`
 
 The production landing lives on Netlify (`https://artemisa-ai.netlify.app`). Netlify is configured from its dashboard (there is no `netlify.toml`), so a stale or unconnected branch is invisible from the repo. Issue #710 was exactly that: `v1.5.0` was released and production kept serving a pre-#705 bundle.
 
@@ -244,7 +296,7 @@ To remove the integration entirely instead, disconnect it in the Vercel project 
 
 ---
 
-## 8. Local Development
+## 9. Local Development
 
 ```bash
 # Install all dependencies (root + frontend via workspaces)
@@ -262,7 +314,7 @@ cd frontend && npm run dev  # Frontend (Next.js, port 3000)
 
 ---
 
-## 9. Production Considerations
+## 10. Production Considerations
 
 ### Secrets Management
 
