@@ -9,11 +9,16 @@ describe('Dependency vulnerability fixes (issue #240)', () => {
 
   it('Next.js is updated to >=16.2.11 (latest stable with security patches)', () => {
     const version = frontendPkg.dependencies.next;
-    // 16.2.11 is the latest stable; semver parse the pinned version
     const [major, minor, patch] = version.split('.').map(Number);
-    assert.ok(major >= 16, 'major >= 16');
-    assert.ok(minor >= 2, 'minor >= 2');
-    assert.ok(patch >= 11, 'patch >= 11');
+    // Compare as a version, not as independent components: asserting
+    // `patch >= 11` rejected 16.3.8 even though it is newer than 16.2.11, so
+    // any correct security bump past 16.2.x failed this test.
+    const current = major * 1_000_000 + minor * 1_000 + patch;
+    const minimum = 16 * 1_000_000 + 2 * 1_000 + 11;
+    assert.ok(
+      current >= minimum,
+      `next ${version} must be at least 16.2.11 (the release that shipped the security patches)`,
+    );
   });
 
   it('sharp is not a direct dependency (Next.js uses it optionally at runtime)', () => {
