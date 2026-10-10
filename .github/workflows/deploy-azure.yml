@@ -109,6 +109,15 @@ jobs:
           set -euo pipefail
           # Secrets go through a 600-mode file rather than CLI arguments so
           # they never land in a process list or a debug log.
+          # The express environment cannot use a managed identity for registry
+          # auth, so the ACR admin credential is the pull path. Read it here
+          # rather than storing it as a GitHub secret: it never leaves Azure
+          # and the workflow already holds Contributor on the resource group.
+          ACR_USER=$(az acr credential show --name "$ACR_NAME" \
+            --query username -o tsv)
+          ACR_PASS=$(az acr credential show --name "$ACR_NAME" \
+            --query passwords[0].value -o tsv)
+
           params=$(mktemp)
           chmod 600 "$params"
           trap 'rm -f "$params"' EXIT
@@ -124,7 +133,9 @@ jobs:
               "artemisaApiKeys":    { "value": "${{ secrets.ARTEMISA_API_KEYS }}" },
               "metricsSecret":      { "value": "${{ secrets.METRICS_SECRET }}" },
               "bypassSecret":       { "value": "${{ secrets.BYPASS_SECRET }}" },
-              "containerRegistryName": { "value": "${ACR_NAME}" }
+              "containerRegistryName": { "value": "${ACR_NAME}" },
+              "acrUsername":         { "value": "$ACR_USER" },
+              "acrPassword":         { "value": "$ACR_PASS" }
             }
           }
           JSON
