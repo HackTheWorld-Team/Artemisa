@@ -102,6 +102,35 @@ describe('Azure Container Apps deployment security (ADR-0009)', () => {
     );
   });
 
+  it('every container probe points at a route the backend actually registers', () => {
+    // This is the invariant whose absence cost the most. The health router is
+    // mounted at /api in src/app.ts and declares '/health/live' and
+    // '/health/ready' relative to that mount, so the reachable paths are
+    // /api/health/live and /api/health/ready. The Bicep originally probed
+    // /health/live and /health/ready, which return 404, so Container Apps
+    // never saw the replica as ready and reported the revision as
+    // "Container crashing" while Node was running perfectly well. Nothing in
+    // the repo checked that the probe path and the route agreed.
+    const bicepPaths = [...bicep.matchAll(/path:\s*'(\/[^']*)'/g)].map((m) => m[1]);
+    assert.ok(bicepPaths.length > 0, 'no probe paths found in the Bicep');
+
+    const healthRoutes = fs.readFileSync('src/routes/health.ts', 'utf8').matchAll(/router\.get\(\s*'(\/[^']*)'/g);
+    const registered = new Set([...healthRoutes].map((m) => m[1]));
+
+    // The health router is mounted under /api; mirror that here so a future
+    // change to the mount point fails this test instead of silently 404ing.
+    const mount = fs.readFileSync('src/app.ts', 'utf8').match(/app\.use\(\s*'(\/[^']*)'\s*,\s*healthRouter/);
+    const prefix = mount ? mount[1] : '/api';
+
+    for (const probePath of bicepPaths) {
+      const route = probePath.slice(prefix.length);
+      assert.ok(
+        registered.has(route),
+        `probe '${probePath}' is not served: ${prefix} mounts healthRouter, which registers ${[...registered].join(', ')}`,
+      );
+    }
+  });
+
   it('infra/main.bicep does not let the liveness probe restart a merely slow app', () => {
     // Observed: the platform edge adds ~700ms and spikes past 5s, and answers
     // `{"error":"App port is not ready"}` while the container is replaced. With
@@ -149,8 +178,12 @@ describe('Azure Container Apps deployment security (ADR-0009)', () => {
   });
 
   it('infra/main.bicep wires liveness and readiness to the existing health routes', () => {
-    assert.match(bicep, /path:\s*'\/health\/live'/);
-    assert.match(bicep, /path:\s*'\/health\/ready'/);
+    // These must be the full paths including the /api mount, not the bare
+    // router-relative '/health/live'. The Bicep probed the bare form and every
+    // probe returned 404 for the whole life of the deployment.
+    assert.match(bicep, /path:\s*'\/api\/health\/live'/);
+    assert.match(bicep, /path:\s*'\/api\/health\/ready'/);
+    assert.doesNotMatch(bicep, /path:\s*'\/health\/(live|ready)'/);
     assert.match(bicep, /minReplicas:\s*minReplicas/);
   });
 

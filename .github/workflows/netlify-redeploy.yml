@@ -65,37 +65,48 @@ jobs:
           echo "id=$id" >> "$GITHUB_OUTPUT"
           echo "Deploy $id started (state: $state)"
 
-      - name: Wait for the deploy to finish
+      - name: Wait for the build to finish
+        id: wait
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         run: |
           set -euo pipefail
+          # POST /sites/{id}/builds returns a BUILD id, not a deploy id, so the
+          # build has to be polled on /builds. The deploy it produces is only
+          # reachable through the build's deploy_id.
           build="${{ steps.build.outputs.id }}"
+          deploy_id=""
           for attempt in $(seq 1 60); do
             body=$(curl -fsS -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
-              "https://api.netlify.com/api/v1/deploys/$build")
+              "https://api.netlify.com/api/v1/builds/$build")
             state=$(echo "$body" | jq -r '.state')
-            echo "attempt $attempt: $state"
+            deploy_id=$(echo "$body" | jq -r '.deploy_id // empty')
+            echo "attempt $attempt: build state=$state deploy=${deploy_id:-none}"
             case "$state" in
               ready)
-                echo "Deploy finished: $(echo "$body" | jq -r '.ssl_url // .url')"
+                echo "deploy_id=$deploy_id" >> "$GITHUB_OUTPUT"
                 exit 0 ;;
-              error|failed)
-                echo "::error::Netlify deploy failed: $(echo "$body" | jq -r '.error_message // "unknown"')"
+              error)
+                msg=$(echo "$body" | jq -r '.error_message // "unknown"')
+                echo "::error::Netlify build failed: $msg"
                 exit 1 ;;
             esac
             sleep 15
           done
-          echo "::error::Timed out waiting for the Netlify deploy."
+          echo "::error::Timed out waiting for the Netlify build."
           exit 1
 
-      - name: Report which commit is now live
+      - name: Report what is now live
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         run: |
           set -euo pipefail
-          sha=$(curl -fsS -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
-            "https://api.netlify.com/api/v1/deploys/${{ steps.build.outputs.id }}" \
-            | jq -r '.commit_sha')
-          echo "Netlify is now serving commit: $sha"
-          echo "GitHub master is:            $(git rev-parse HEAD 2>/dev/null || echo 'checkout not present in this job')"
+          deploy_id="${{ steps.wait.outputs.deploy_id}}"
+          if [ -z "$deploy_id" ]; then
+            echo "::warning::Build finished but exposed no deploy_id; check the Netlify dashboard."
+            exit 0
+          fi
+          body=$(curl -fsS -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+            "https://api.netlify.com/api/v1/deploys/$deploy_id")
+          echo "Live deploy: $(echo "$body" | jq -r '.ssl_url // .url')"
+          echo "Commit:      $(echo "$body" | jq -r '.commit_sha')"
