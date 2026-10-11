@@ -11,7 +11,7 @@
  *  - Cleans old cache versions on activate and claims clients.
  *
  * Intentionally hand-rolled rather than @serwist/next to avoid build
- * integration risk with Next 16 + Turbopack for a hackathon deployment.
+ * integration risk with Next 16 + Turbopack for a production deployment.
  */
 importScripts('/sw-version.js');
 
