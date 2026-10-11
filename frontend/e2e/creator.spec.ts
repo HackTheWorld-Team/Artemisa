@@ -5,7 +5,7 @@ import { waitForCreatorReady } from './helpers';
 /**
  * End-to-end coverage of the Creator's four entry modes against a live
  * backend. These exercise the parts that unit tests cannot: the real workflow
- * contract (32 questions, 28 required), the real catalog (270+ items) and the
+ * contract (32 questions, all required), the real catalog (270+ items) and the
  * navigation between mode select, the question flow, review and completion.
  *
  * Requires the backend on http://localhost:3001.
