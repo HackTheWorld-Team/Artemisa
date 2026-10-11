@@ -318,7 +318,8 @@ secretos y variables de GitHub quedan intactos.
   origen que el backend anuncia a los agentes se toma de los headers de la
   petición, que controla el cliente: un header forjado puede apuntar a otro
   servidor.
-- Los probes apuntan a `/health/live` y `/health/ready`, que ya existen en
+- Los probes apuntan a `/api/health/live` y `/api/health/ready` (la ruta completa,
+  con el prefijo `/api` bajo el que se monta el router de health), que ya existen en
   `src/routes/health.ts`. Cablearlos es lo que permite que Container Apps
   reinicie un proceso colgado por su cuenta.
 - `agent-creator/` **no se despliega**. Está marcado como legacy; el Creator
