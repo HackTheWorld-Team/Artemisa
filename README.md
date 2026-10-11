@@ -12,7 +12,7 @@
 
 Artemisa es un generador **stateless y determinista** de bundles de configuración para agentes de desarrollo y operación.
 
-1. El usuario responde un árbol de decisiones de 32 preguntas (28 obligatorias, 4 opcionales) a través del frontend o la API.
+1. El usuario responde un árbol de decisiones de 32 preguntas, todas obligatorias a través del frontend o la API.
 2. El backend recalcula el progreso, la siguiente pregunta y las recomendaciones explicables de forma pura: misma entrada + mismas versiones = misma salida.
 3. Cuando el árbol está completo, genera un bundle `JSON` reproducible con:
    - `artemisa.blueprint.json` — modelo canónico de todas las decisiones.
