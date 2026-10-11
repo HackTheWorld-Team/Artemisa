@@ -2,9 +2,19 @@
 
 All notable changes to this project are documented here.
 
+### CI/CD
+
+- Add a manual clear-cache redeploy so NEXT_PUBLIC_* changes actually land _(netlify)_
+
+## [v1.5.18] - 2026-10-10
+
 ### Bug Fixes
 
 - Stop the liveness probe from restarting a merely slow container _(deploy)_
+
+### Chores
+
+- V1.5.18 [skip ci] _(release)_
 
 ## [v1.5.17] - 2026-10-10
 
