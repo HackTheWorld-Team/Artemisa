@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ### Chores
 
+- Quitar las referencias al hackathon _(readme)_
+
+## [v1.5.22] - 2026-10-11
+
+### Chores
+
+- V1.5.22 [skip ci] _(release)_
+
 - Portar el retiro de DigitalOcean a master y documentar la arquitectura _(deploy)_
 
 ## [v1.5.21] - 2026-10-11
