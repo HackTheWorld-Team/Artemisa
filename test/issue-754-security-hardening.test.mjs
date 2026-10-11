@@ -111,12 +111,13 @@ describe('trust proxy configuration (issue #754)', () => {
     assert.match(source, /process\.env\.TRUST_PROXY/);
     assert.match(source, /app\.set\('trust proxy'/);
     assert.match(fs.readFileSync('.env.example', 'utf8'), /^TRUST_PROXY=$/m);
-    assert.match(fs.readFileSync('.do/app.yaml', 'utf8'), /key: TRUST_PROXY/);
+    assert.match(fs.readFileSync('infra/main.bicep', 'utf8'), /\{ name: 'TRUST_PROXY', value: '1' \}/);
   });
 
-  it('PUBLIC_BASE_URL is bound in the DigitalOcean spec', () => {
-    const appYaml = fs.readFileSync('.do/app.yaml', 'utf8');
-    assert.match(appYaml, /key: PUBLIC_BASE_URL\n\s+value: \$\{APP_URL\}/);
+  it('PUBLIC_BASE_URL is wired into the Container App from a parameter', () => {
+    // Was bound in .do/app.yaml until the DigitalOcean path was retired.
+    const bicep = fs.readFileSync('infra/main.bicep', 'utf8');
+    assert.match(bicep, /\{ name: 'PUBLIC_BASE_URL', value: publicBaseUrl \}/);
   });
 });
 
