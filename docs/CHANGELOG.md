@@ -2,9 +2,19 @@
 
 All notable changes to this project are documented here.
 
+### Chores
+
+- Declarar el workspace de Log Analytics en el Bicep _(infra)_
+
+## [v1.5.20] - 2026-10-11
+
 ### Bug Fixes
 
 - Probes apuntaban a /health en vez de /api/health _(health)_
+
+### Chores
+
+- V1.5.20 [skip ci] _(release)_
 
 ## [v1.5.19] - 2026-10-11
 
