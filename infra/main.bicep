@@ -8,8 +8,9 @@
 //      Consumption-only environment. An empty array creates a "workload
 //      profiles" environment, which bills a $0.10/h management fee (~$73/month)
 //      before a single container runs.
-//   2. appInsightsConfiguration / logAnalyticsConfiguration are OMITTED, so no
-//      Log Analytics workspace is attached. Attaching one bills per GB ingested.
+//   2. appInsightsConfiguration stays OMITTED: App Insights adds an agent, a
+//      second bill line and nothing this backend needs. Log Analytics IS
+//      attached on purpose — see appLogsConfiguration below.
 //
 // Registry auth: ACR admin credentials, NOT a managed identity. The
 // Consumption-only environment provisioned here is an "express" environment,
@@ -77,6 +78,9 @@ param containerRegistryName string = 'artemisarego'
 @allowed(['Basic', 'Standard', 'Premium'])
 param containerRegistrySku string = 'Basic'
 
+@description('Log Analytics workspace that receives the app logs. Declared here rather than left to ad-hoc CLI changes: without it a redeploy wipes the destination, which is exactly how the workspace ended up orphaned. Logs are what found the broken health probes — every probe 404d and nothing in Azure said so plainly.')
+param logAnalyticsName string = 'log-analytics-artemisa'
+
 var acrLoginServer = '${containerRegistryName}.azurecr.io'
 var appName = 'artemisa-backend'
 var envName = 'artemisa-env'
@@ -99,11 +103,33 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
   }
 }
 
-// --- Container Apps Environment (Consumption-only, no Log Analytics) --------
+// --- Container Apps Environment (Consumption-only, with Log Analytics) ------
+resource logs 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
+  name: logAnalyticsName
+  location: location
+  properties: {
+    sku: { name: 'PerGB2018' }
+    retentionInDays: 30
+  }
+}
+
 resource env 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: envName
   location: location
   properties: {
+    // Declared, not omitted. The console logs are the only place that names a
+    // real cause: the health probes pointed at /health/live and /health/ready
+    // while the app serves /api/health/live and /api/health/ready, so every
+    // probe returned 404 for the whole life of the deployment and Azure
+    // reported only "Container crashing". A workspace attached outside this
+    // template is wiped by the next deploy, which is how it ended up orphaned.
+    appLogsConfiguration: {
+      destination: 'log-analytics'
+      logAnalyticsConfiguration: {
+        customerId: logs.properties.customerId
+        sharedKey: logs.listKeys().primarySharedKey
+      }
+    }
     // Intentionally absent: workloadProfiles stays null => Consumption-only.
     // zoneRedundant is not supported on Consumption-only environments.
     zoneRedundant: false
