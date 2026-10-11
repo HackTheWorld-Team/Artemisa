@@ -1,11 +1,7 @@
 <p align="center">
-  <img src="docs/images/brand/hero-banner.svg" alt="Artemisa - Configuration generator for AI agents" width="100%" />
-</p>
-
-<p align="center">
-  <a href="https://github.com/VECTORG99/Artemisa/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/VECTORG99/Artemisa/ci.yml?branch=master&style=for-the-badge&label=CI&color=8b5cf6" alt="CI" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MPL--2.0-8b5cf6?style=for-the-badge" alt="License: MPL-2.0" /></a>
-  <a href="https://artemisa-ai.netlify.app"><img src="https://img.shields.io/badge/Homepage-artemisa--ai.netlify.app-8b5cf6?style=for-the-badge" alt="Homepage" /></a>
+  <a href="https://github.com/VECTORG99/Artemisa/actions/workflows/ci.yml"><img src="https://github.com/VECTORG99/Artemisa/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI" /></a>
+  <a href="LICENSE">License: MPL-2.0</a>
+  <a href="https://artemisa-ai.netlify.app">Homepage</a>
 </p>
 
 <a id="que-es-artemisa"></a>
