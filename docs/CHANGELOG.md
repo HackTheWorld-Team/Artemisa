@@ -2,9 +2,19 @@
 
 All notable changes to this project are documented here.
 
+### Bug Fixes
+
+- Probes apuntaban a /health en vez de /api/health _(health)_
+
+## [v1.5.19] - 2026-10-11
+
 ### CI/CD
 
 - Add a manual clear-cache redeploy so NEXT_PUBLIC_* changes actually land _(netlify)_
+
+### Chores
+
+- V1.5.19 [skip ci] _(release)_
 
 ## [v1.5.18] - 2026-10-10
 
