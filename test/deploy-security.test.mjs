@@ -173,8 +173,17 @@ describe('Azure Container Apps deployment security (ADR-0009)', () => {
     assert.doesNotMatch(bicep, /workloadProfiles/);
   });
 
-  it('infra/main.bicep attaches no Log Analytics or App Insights to the environment', () => {
-    assert.doesNotMatch(bicep, /logAnalyticsConfiguration|appInsightsConfiguration/);
+  it('infra/main.bicep sends app logs to Log Analytics but adds no App Insights', () => {
+    // This test said the opposite until the health probes were found to be
+    // pointing at routes that do not exist. Every probe returned 404 for the
+    // whole life of the deployment and Azure reported only "Container
+    // crashing"; the console logs were the only place that named the real
+    // cause. A workspace created ad hoc outside the template gets wiped from
+    // the environment by the next deploy, which is exactly what happened, so
+    // the destination has to be declared here.
+    assert.match(bicep, /destination:\s*'log-analytics'/);
+    assert.match(bicep, /customerId:\s*logs\.properties\.customerId/);
+    assert.doesNotMatch(bicep, /appInsightsConfiguration/);
   });
 
   it('infra/main.bicep wires liveness and readiness to the existing health routes', () => {

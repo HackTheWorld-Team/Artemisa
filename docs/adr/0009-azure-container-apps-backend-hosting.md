@@ -36,6 +36,40 @@ Accepted
 - `ghcr.io` over Azure Container Registry: **originally accepted, then reversed during migration.** GHCR has no registry fee, but Container Apps can only pull from it with a stored token. On this deployment the token had to be created interactively by a human, and it expires: an expired token stops scale-out and new deploys while existing replicas keep running, so the failure would be silent and late. Azure Container Registry Basic costs USD 0.1666/day (~USD 5.00/month) and lets the container app pull with a **system-assigned managed identity**, which has nothing to store and nothing to rotate. The USD 5.00 premium is bought deliberately; it fits inside the budget at `minReplicas: 1` (USD 9.29 total) and removes an entire class of operational failure. Returning to GHCR is a valid cost-cut if the budget ever tightens, at the price of owning a rotating credential again.
 - Container Apps secret store over Azure Key Vault: accepted for now. Key Vault adds a resource and a managed identity for three secrets on a project with one backend. Revisit if the secret count grows or if policy requires customer-managed key custody.
 
+## Incident: the probes pointed at routes that do not exist
+
+For the entire life of the first deployment, both Container Apps probes returned
+**404**. `src/routes/health.ts` declares `router.get('/health/live', ...)` relative to
+the router, and that router is mounted at `/api` in `src/app.ts`, so the real paths are
+`/api/health/live` and `/api/health/ready`. The Bicep probed `/health/live` and
+`/health/ready`. The Dockerfile `HEALTHCHECK` did use `/api/health`, which is why the
+container looked healthy at the container level while the platform never marked it ready.
+
+Signals worth remembering, because they are what made this slow to diagnose:
+
+- `provisioningState: Failed` with `runningState: null` and a generic
+  `provisioningError: "Container crashing: backend"`, never mentioning the 404.
+- `RestartCount` at **0**: the process never died. If that counter is zero while the
+  revision claims to be crashing, the app is fine and the platform cannot see the probe.
+- Availability that swings without pattern (0/6, 1/12, 3/8, then 30/30) on the same
+  image, with no deploy in between.
+- 700 ms latencies on a process using 69 MB of 710 MB: CPU-bound, not memory-bound.
+- Once the revision reaches terminal `Failed`, **ARM rejects writes against the app**:
+  neither the deploy nor its own rollback gets through (`InvalidRequest: The upstream
+request was rejected`). The only way out is deleting the Container App and recreating
+  it from Bicep, which loses nothing because the app is stateless and declarative.
+
+What found it were the console logs, which said plainly
+`ApiError: Route not found: GET /health/ready`. That is why the environment attaches a
+Log Analytics workspace declared in the Bicep itself: attaching one through the CLI puts
+it outside the template and the next deploy wipes it, which is exactly what happened.
+
+The testing lesson is that `infra/main.bicep` must not be validated against itself.
+`assert.match(bicep, /path:\s*'\/health\/live'/)` passed with the wrong path because it
+only checked that the file contained what was already expected. The test now crosses the
+Bicep's probe paths against the routes registered in `src/routes/health.ts` **and**
+against the mount point in `src/app.ts`.
+
 ## Consequences
 
 - The deploy cost is about USD 9.29/month (ACR Basic USD 5.00 + Container Apps ~USD 4.29 at `minReplicas: 1`) and roughly USD 15/month worst case at `minReplicas: 2` with normal traffic. Raising `minReplicas` to 2 buys availability-zone spread for ~USD 5.92 more and breaks a USD 10/month budget, which is why it is not the default.
