@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ### Chores
 
+- Portar el retiro de DigitalOcean a master y documentar la arquitectura _(deploy)_
+
+## [v1.5.21] - 2026-10-11
+
+### Chores
+
+- V1.5.21 [skip ci] _(release)_
+
 - Declarar el workspace de Log Analytics en el Bicep _(infra)_
 
 ## [v1.5.20] - 2026-10-11
