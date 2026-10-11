@@ -1,0 +1,101 @@
+name: Redeploy Netlify (clear cache)
+
+# NEXT_PUBLIC_API_URL and NEXT_PUBLIC_API_KEY are baked into the bundle at
+# build time. A normal Netlify deploy can serve a stale bundle from the cached
+# build environment, which is exactly how production ended up still calling a
+# DigitalOcean backend that no longer existed after the account was cancelled.
+# This workflow is the manual "Clear cache and deploy site" button, runnable
+# from the CLI instead of the dashboard.
+#
+# The token is read from secrets here rather than typed into a terminal:
+# GitHub never returns a secret's value through the API, so this job is the
+# only place the value exists, and it never reaches a transcript or a shell
+# history.
+#
+# Required GitHub configuration:
+#   Secrets: NETLIFY_AUTH_TOKEN
+#   Variables: NETLIFY_SITE_NAME (defaults to artemisa-ai)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SITE_NAME: ${{ vars.NETLIFY_SITE_NAME || 'artemisa-ai' }}
+
+jobs:
+  clear-cache-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve site
+        id: site
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          site_id=$(curl -fsS -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+            "https://api.netlify.com/api/v1/sites?filter=all" \
+            | jq -r --arg n "$SITE_NAME" \
+              '.[] | select(.name == $n) | .id' | head -1)
+          if [ -z "$site_id" ]; then
+            echo "::error::No Netlify site named '$SITE_NAME' is visible to this token."
+            exit 1
+          fi
+          echo "id=$site_id" >> "$GITHUB_OUTPUT"
+          echo "Site '$SITE_NAME' -> $site_id"
+
+      - name: Trigger build with a cleared cache
+        id: build
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          # clear_cache is what the dashboard button sends. Without it the
+          # build can reuse the previous environment and bake the old
+          # NEXT_PUBLIC_* values right back into the bundle.
+          resp=$(curl -fsS -X POST \
+            -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"clear_cache": true}' \
+            "https://api.netlify.com/api/v1/sites/${{ steps.site.outputs.id }}/builds")
+          id=$(echo "$resp" | jq -r '.id')
+          state=$(echo "$resp" | jq -r '.state')
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "Deploy $id started (state: $state)"
+
+      - name: Wait for the deploy to finish
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          build="${{ steps.build.outputs.id }}"
+          for attempt in $(seq 1 60); do
+            body=$(curl -fsS -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+              "https://api.netlify.com/api/v1/deploys/$build")
+            state=$(echo "$body" | jq -r '.state')
+            echo "attempt $attempt: $state"
+            case "$state" in
+              ready)
+                echo "Deploy finished: $(echo "$body" | jq -r '.ssl_url // .url')"
+                exit 0 ;;
+              error|failed)
+                echo "::error::Netlify deploy failed: $(echo "$body" | jq -r '.error_message // "unknown"')"
+                exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::Timed out waiting for the Netlify deploy."
+          exit 1
+
+      - name: Report which commit is now live
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha=$(curl -fsS -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
+            "https://api.netlify.com/api/v1/deploys/${{ steps.build.outputs.id }}" \
+            | jq -r '.commit_sha')
+          echo "Netlify is now serving commit: $sha"
+          echo "GitHub master is:            $(git rev-parse HEAD 2>/dev/null || echo 'checkout not present in this job')"
