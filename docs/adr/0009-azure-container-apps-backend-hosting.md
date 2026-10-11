@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-- The backend currently deploys to DigitalOcean App Platform via `.do/app.yaml` (`instance_count: 1`, `basic-xxs`). The frontend is a separate deploy on Netlify. Hosting was never recorded as an explicit decision, so the deploy path is documented per-provider rather than chosen.
+- The backend used to deploy to DigitalOcean App Platform via `.do/app.yaml` (`instance_count: 1`, `basic-xxs`) before that account was cancelled; the file and its deploy path are gone. The frontend is a separate deploy on Netlify. Hosting was never recorded as an explicit decision, so the deploy path was documented per-provider rather than chosen — which is what this ADR corrects.
 - Per ADR-0008 the backend only generates configuration files: no database, no filesystem writes, no network calls during generation, no persistent disk. Every request is a pure function of its body. Cost is therefore dominated by CPU-seconds awake, not by state, storage or egress.
 - `docker/Dockerfile.backend` already exists as a multi-stage build running as a non-root user with a `HEALTHCHECK`, and `src/routes/health.ts` already exposes `/api/health`, `/health/live` and `/health/ready`.
 - `server.ts` already drains in-flight requests on `SIGTERM`/`SIGINT`, which is what a managed container platform sends when it recycles or scales a replica.
@@ -25,7 +25,7 @@ Accepted
 - The container app pulls the image with a **system-assigned managed identity** holding `AcrPull`. ACR admin credentials are disabled, so the role assignment is the only pull path. No registry secret exists in GitHub or in the Container App configuration.
 - `.github/workflows/deploy-azure.yml` gates the deploy on `https://<fqdn>/api/health` returning 200 and reverts to the previous image when the gate fails. A broken release cannot stay live while reporting success.
 - `TRUST_PROXY=1` and `PUBLIC_BASE_URL` are declared in the Bicep rather than left to defaults, because both are prerequisites for correct behavior behind a TLS-terminating proxy and both fail silently when absent.
-- The frontend authenticates with the same `ARTEMISA_API_KEYS` value it already uses against DigitalOcean, delivered as Netlify's `NEXT_PUBLIC_API_KEY`.
+- The frontend authenticates with the same `ARTEMISA_API_KEYS` value it already used against DigitalOcean, delivered as Netlify's `NEXT_PUBLIC_API_KEY`.
 
 ## Alternatives Considered
 
@@ -80,7 +80,7 @@ against the mount point in `src/app.ts`.
 - `NEXT_PUBLIC_API_URL` is baked at build time, so repointing the frontend requires a Netlify rebuild, not just a variable change.
 - Without `TRUST_PROXY=1` every request appears to originate from Container Apps' proxy, the per-IP rate limiter treats all users as one source, and real users are blocked after `RATE_LIMIT_GLOBAL` requests per minute. This is the most likely self-inflicted outage in this design and is why the value is pinned in the Bicep.
 - The `AcrPull` role assignment is created **after** the container app, because it needs the app's identity. On a brand new environment the first revision can fail to pull for up to about a minute while the assignment propagates; Container Apps retries and recovers, and the deploy health gate waits for it. A failed first deploy is more likely to be propagation than a broken image.
-- `.do/app.yaml` and its DigitalOcean deploy path remain in the repository during the transition and can be removed once the Azure path is confirmed in production.
+- ~~`.do/app.yaml` and its DigitalOcean deploy path remain in the repository during the transition and can be removed once the Azure path is confirmed in production.~~ **Done**: the Azure path serves production and `.do/app.yaml` is deleted.
 
 ## Revisit Conditions
 
@@ -88,4 +88,4 @@ against the mount point in `src/app.ts`.
 - Backend traffic sustains more than ~10 concurrent requests, or a full Auto-largo Creator run needs more than `RATE_LIMIT_CREATOR` headroom; raise `maxReplicas` or move to a workload profile.
 - A database, durable state or server-side accounts are introduced, which breaks the stateless premise this pricing rests on (see ADR-0008).
 - Availability requirements exceed 99.95%, which implies a second region behind a global traffic manager.
-- DigitalOcean is decommissioned and `.do/app.yaml` plus its section in `docs/deployment.md` and the DigitalOcean describe block in `test/deploy-security.test.mjs` are removed.
+- ~~DigitalOcean is decommissioned and `.do/app.yaml` plus its section in `docs/deployment.md` and the DigitalOcean describe block in `test/deploy-security.test.mjs` are removed.~~ **Done, on `master`**: `.do/app.yaml` deleted, the describe block replaced by host-agnostic `api.ts` invariants, the section removed and the rest of the document renumbered.

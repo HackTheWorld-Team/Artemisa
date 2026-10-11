@@ -15,8 +15,9 @@ Artemisa convierte un árbol de decisiones en un bundle de configuración reprod
 7. [Artefactos de Referencia](#artefactos-de-referencia)
 8. [Referencia de Variables de Entorno](#referencia-de-variables-de-entorno)
 9. [Patrones de Error](#patrones-de-error)
-10. [Estructura del Proyecto](#estructura-del-proyecto)
-11. [Principios Arquitectonicos](#principios-arquitectonicos)
+10. [Arquitectura de Despliegue](#arquitectura-de-despliegue)
+11. [Estructura del Proyecto](#estructura-del-proyecto)
+12. [Principios Arquitectonicos](#principios-arquitectonicos)
 
 ---
 
@@ -265,6 +266,78 @@ Los errores del Creator usan `application/problem+json` con `issues[]` y rutas d
 
 ---
 
+## Arquitectura de Despliegue
+
+```text
+                                        push a master
+                                             │
+                          ┌──────────────────▼───────────────────┐
+                          │  .github/workflows/deploy-azure.yml  │
+                          │  OIDC (sin PAT ni secret de Azure)   │
+                          └──────┬───────────────────────┬───────┘
+                                 │ build + push          │ deploy Bicep
+                    ┌────────────▼─────────┐   ┌─────────▼──────────────────┐
+                    │  ACR (Basic)          │   │  Container Apps            │
+                    │  artemisarego         │──▶│  Consumption, 1 réplica    │
+                    │  ~USD 5.00/mes        │   │  0.25 vCPU / 0.5Gi         │
+                    └──────────────────────┘   │  ~USD 4.29/mes             │
+                                               └────┬──────────────┬────────┘
+                                                    │              │
+                                      health probes │              │ stdout (pino)
+                                                    ▼              ▼
+                                          /api/health/live   Log Analytics
+                                          /api/health/ready  ~USD 0.10/GB
+                                                    │
+        usuario                                     │
+        ┌────────┐   HTTPS   ┌──────────────────────▼──────────────────────┐
+        │ Netlify │─────────▶│ artemisa-backend.*.brazilsouth.azurecontainerapps.io │
+        │ frontend│◀─────────│                                              │
+        └────────┘  CORS     │  /api/health, /api/metrics, /api/openapi.json│
+                             │  /api/v1/creator/*  (API key)                │
+                             └──────────────────────────────────────────────┘
+
+Costo total: ~USD 9.40/mes + ingesta de logs. Tope del proyecto: USD 15/mes.
+```
+
+El backend es una función pura del request: sin base de datos, sin disco persistente, sin estado entre réplicas. Eso es lo que permite que el plan más barato de Container Apps, con una sola réplica, sea suficiente — y es también por qué borrar el Container App y recrearlo desde Bicep no pierde nada.
+
+### Región
+
+`brazilsouth`. La política de la suscripción solo acepta `brazilsouth` y `eastus2` para Container Apps, y el precio entre ambas es idéntico; la latencia desde Chile es de 30-40 ms contra 110-140 ms. Las VMs están bloqueadas por esa misma política, lo que descarta cualquier alternativa self-hosted.
+
+### Decisiones que cuesta dinero deshacer
+
+| Decisión                                          | Por qué                                                                                                 | Qué rompe si se cambia                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `activeRevisionsMode: Single`                     | un solo canal de despliegue, rollback explícito                                                         | una revisión en modo `Multiple` deja tráfico sin querer               |
+| **`workloadProfiles` omitido, no `[]`**           | un arreglo vacío crea un entorno de perfiles de trabajo que cobra ~USD 73/mes antes de correr nada      | el importe aparece sin que ningún contenedor esté corriendo           |
+| `minReplicas: 1`                                  | la API siempre tibia, sin cold start; subir a 2 cuesta ~USD 15.21/mes                                   | —                                                                     |
+| `maxReplicas: 5` con `concurrentRequests: 3`      | escala out bajo ráfaga dentro del presupuesto                                                           | con `minReplicas > 0` nunca escala a cero y se paga la réplica ociosa |
+| ACR con **admin credential**, no managed identity | los environments _express_ rechazan `registries[].identity` con `ExpressEnvironmentFeatureNotSupported` | el único entorno que sí lo acepta cobra ~USD 73/mes                   |
+| Log Analytics **declarado en el Bicep**           | adjuntarlo por CLI queda fuera de la plantilla y el siguiente deploy lo borra                           | ver más abajo                                                         |
+
+### La invariante que casi cuesta la migración
+
+Los probes de Container Apps apuntaban a `/health/live` y `/health/ready`. La app los sirve en **`/api/health/live` y `/api/health/ready`**, porque `src/routes/health.ts` declara rutas relativas al router y ese router se monta en `/api`. Cada probe devolvió 404 durante toda la vida del primer despliegue.
+
+El contenedor no estaba roto: el `HEALTHCHECK` del Dockerfile sí usaba `/api/health`, así que a nivel de contenedor se veía sano mientras la plataforma nunca lo daba por listo. La señal que lo delataba era `RestartCount` en **0** junto a un `provisioningError` de `"Container crashing"` — si el contador de reinicios está en cero pero la revisión dice estar crasheando, no es la app, es la plataforma que no ve pasar el probe.
+
+Lo que lo encontró fueron los logs de consola, que decían literal `ApiError: Route not found: GET /health/ready`. De ahí que el workspace de Log Analytics esté declarado en el propio Bicep: sin logs no hay diagnóstico posible, y un recurso creado fuera de la plantilla no sobrevive al siguiente despliegue.
+
+`test/deploy-security.test.mjs` impide repetirlo cruzando los `path:` del Bicep contra las rutas registradas en `src/routes/health.ts` **y** contra el punto de montaje en `src/app.ts`, de modo que también falla si alguien mueve el router fuera de `/api`.
+
+### Configuración que falla en silencio
+
+| Variable               | Qué rompe sin ella                                                                           |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| `TRUST_PROXY=1`        | el rate limiter ve a todos los usuarios con la misma IP y los bloquea después de 100 req/min |
+| `PUBLIC_BASE_URL`      | el origen anunciado sale de los headers del cliente, que son controlables                    |
+| `CORS_ALLOWED_ORIGINS` | las respuestas se rechazan desde el navegador con un error opaco                             |
+
+`NEXT_PUBLIC_API_URL` y `NEXT_PUBLIC_API_KEY` se hornean en el bundle en build. Cambiarlas no es un deploy: es un **clear cache and deploy** en Netlify, porque un deploy normal puede servir un bundle viejo desde el entorno de build cacheado. El workflow `netlify-redeploy.yml` automatiza eso y es el único lugar donde el token de Netlify existe — GitHub nunca devuelve el valor de un secret por API.
+
+---
+
 ## Estructura del Proyecto
 
 ```text
@@ -285,7 +358,7 @@ artemisa/
 ├── packages/types/                  # Tipos compartidos (@artemisa/types)
 ├── docs/
 │   ├── architecture.md              # Este documento
-│   ├── deployment.md               # Despliegue local, Docker y DigitalOcean
+│   ├── deployment.md               # Despliegue local, Docker y Azure Container Apps
 │   ├── CONVENTIONS.md              # Convenciones de equipo
 │   ├── debug-tooling.md            # Herramientas de debug (dev)
 │   ├── adr/                        # Architecture Decision Records
